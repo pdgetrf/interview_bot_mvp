@@ -21,7 +21,7 @@ except Exception:  # pragma: no cover
     client = None
 
 # ---------- In-memory store (MVP only) ----------
-# For production: replace with Redis or DB, and rotate/expire sessions.
+# For production: replace with Redis/DB, rotate/expire sessions.
 SESSIONS: Dict[str, Dict[str, Any]] = {}
 
 STORYLINE = [
@@ -63,24 +63,22 @@ STORYLINE = [
      ]}
 ]
 
+# ---------- System Prompts ----------
 SYSTEM_PROMPT = (
     "You are a fun, supportive post-race interviewer persona called 'Pit Lane Pal'.\n"
-    "Tone: upbeat, witty, concise; use light motorsport metaphors; never snarky.\n"
-    "For EACH turn: (1) write a short acknowledgment that ALSO adds one playful, helpful comment (max 3 sentences, no emoji),\n"
-    "(2) ask EXACTLY ONE next question that follows the provided direction and avoids repeating past topics,\n"
-    "(3) keep the whole reply brief.\n"
-    "Never stack multiple questions. Avoid saying 'great' more than once per interview.\n"
-    "Return ONLY valid JSON with keys: ack, next_question."
+    "Tone: upbeat, witty, concise; light motorsport metaphors; never snarky.\n"
+    "Return ONLY JSON with keys: ack, next_question.\n"
+    "- ack: 1–3 short sentences, STATEMENTS ONLY (no question marks). Brief, playful, helpful; do not ask anything here.\n"
+    "- next_question: EXACTLY ONE question that follows the provided direction and avoids repeating past topics.\n"
+    "Never stack multiple questions. Avoid saying 'great' more than once per interview."
 )
 
-# Follow-up question generation
 FOLLOWUP_SYSTEM = (
     "You are 'Pit Lane Pal', asking a SINGLE follow-up question based ONLY on the user's most recent answer.\n"
     "Goal: pull one SPECIFIC detail (e.g., a number, section, technique) OR a feeling (e.g., frustration, excitement).\n"
     "Rules: keep it short (one sentence), no multi-part, no emojis, no repeating earlier questions. Return JSON with key: next_question."
 )
 
-# Recap writer
 RECAP_SYSTEM = (
     "You are a motorsport writer turning a short Q&A into a vivid, first-person racer recap.\n"
     "Voice: natural, human, reflective but upbeat; vary sentence length; avoid hype and clichés.\n"
@@ -89,54 +87,53 @@ RECAP_SYSTEM = (
     "- First-person (use 'I'). Past tense.\n"
     "- Keep it truthful to the Q&A. If a detail (time, cones, position, section names, setup changes) appears in the Q&A, include it verbatim.\n"
     "- Do NOT invent numbers or facts.\n"
-    "Required structure (implicitly, not as headings):\n"
-    "  1) Setting: event, surface/weather, and car/setup in one tight opening sentence or two.\n"
-    "  2) One highlight moment with a concrete course feature (e.g., slalom, off-camber left, washboards) and a sensory detail (dust, ruts, tire bite).\n"
-    "  3) One challenge: what went wrong, why it was hard, what I changed (technique or setup), and the result.\n"
-    "  4) Performance snapshot: at least one metric if present (best time, penalties, class position) + how it felt.\n"
-    "  5) Takeaway + next step: one clear lesson and one concrete plan (e.g., tire pressure tweak, left-foot braking drill).\n"
-    "Close with a single reflective line that sounds like a human racer thinking about the next event.\n"
-    "Return ONLY JSON with keys: title, recap. Title <= 60 chars, punchy but honest."
+    "Required shape:\n"
+    "  1) Setting: event, surface/weather, and car/setup quickly.\n"
+    "  2) One highlight with a concrete course feature + sensory detail.\n"
+    "  3) One challenge: what went wrong, why hard, what I changed, result.\n"
+    "  4) Performance snapshot: at least one metric if present + how it felt.\n"
+    "  5) Takeaway + next step: one clear lesson and plan.\n"
+    "Close with a single reflective line.\n"
+    "Return ONLY JSON with keys: title, recap. Title <= 60 chars."
 )
 
-# NEW: semantic decision for whether a follow-up is warranted
 FOLLOWUP_DECISION_SYSTEM = (
-    "You are an evaluator that decides if a follow-up question is warranted "
-    "based on the driver's latest answer in a racing interview.\n\n"
+    "You are an evaluator that decides if a follow-up question is warranted based on the driver's latest answer.\n"
     "Rules:\n"
     "- Respond ONLY with JSON {\"should_follow_up\": true/false}.\n"
-    "- Return true only if the answer contains something that merits deeper discussion, such as:\n"
-    "  1) a described struggle, challenge, or problem the driver faced,\n"
-    "  2) a modification or setup change AND its effect or impact,\n"
-    "  3) a clear emotional reaction or shift (relief, frustration, excitement, etc.),\n"
-    "  4) a performance detail (run times, penalties, position, etc.),\n"
-    "  5) a technical or driving technique (trail braking, rotation, throttle control, etc.).\n"
-    "- Otherwise (e.g., if the answer is just a fact like their name or car model), return false."
+    "- Return true only if the answer includes: a struggle/challenge; a setup change AND its effect; a clear emotional shift; a performance detail; or a driving technique.\n"
+    "- Return false for simple facts (e.g., name, car model) or short pleasantries."
 )
 
-# NEW: LLM-crafted acknowledgment for follow-ups
 FOLLOWUP_ACK_SYSTEM = (
     "You are 'Pit Lane Pal'. Write ONE brief, warm acknowledgment reacting to the driver's last answer.\n"
     "Goal: make it feel like a human bridge into the next follow-up question.\n"
     "Strict rules:\n"
     "- Output JSON only: {\"ack\": \"...\"}\n"
-    "- 1 sentence, ≤ 18 words, no emojis.\n"
+    "- 1 sentence, ≤ 18 words, no emojis, STATEMENT only (no question marks).\n"
     "- Reference one concrete detail or feeling from the driver's answer.\n"
     "- Lead naturally into the upcoming follow-up topic; do NOT repeat that question or ask a new one.\n"
     "- You MAY include a short exact quote (3–6 words) if it fits; never cut words mid-quote.\n"
     "- Avoid generic phrases like 'Got it' or 'Thanks for sharing'."
 )
 
-
 # ---------- Helpers ----------
 def _model_available() -> bool:
     return client is not None
 
 
+def _sanitize_ack(text: str) -> str:
+    """Drop any question-like sentences and trim length."""
+    if not text:
+        return ""
+    parts = re.split(r"(?<=[.!?])\s+", text.strip())
+    keep = [p for p in parts if "?" not in p]
+    cleaned = " ".join(keep).strip()
+    return cleaned[:280]
+
 def pick_variant(stage_idx: int) -> str:
     import random
     return random.choice(STORYLINE[stage_idx]["variants"]) if 0 <= stage_idx < len(STORYLINE) else ""
-
 
 def build_interviewer_messages(history: List[Dict[str, str]], stage_idx: int) -> List[Dict[str, str]]:
     direction = STORYLINE[stage_idx]["direction"]
@@ -144,20 +141,19 @@ def build_interviewer_messages(history: List[Dict[str, str]], stage_idx: int) ->
     for turn in history:
         transcript.append(f"Q: {turn['q']}")
         transcript.append(f"A: {turn['a']}")
-    transcript_text = "\n".join(transcript[-12:])  # last few lines for brevity
+    transcript_text = "\n".join(transcript[-12:])  # last few lines
 
     user_instruction = (
             "Context transcript so far (Q and A):\n" + transcript_text + "\n\n"
                                                                          f"Next step direction: {direction}\n"
-                                                                         "In the 'Pit Lane Pal' voice, write a brief acknowledgment + one understanding, useful comment (max 3 sentences, no emoji).\n"
-                                                                         "Then ask exactly one next question that advances the interview per the direction and does NOT repeat earlier questions.\n"
+                                                                         "Write an ack that is statement-only (no question marks) and adds one helpful comment.\n"
+                                                                         "Then produce exactly one next question per the direction.\n"
                                                                          "Output JSON with keys: ack, next_question."
     )
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user_instruction}
     ]
-
 
 def build_followup_messages(last_question: str, last_answer: str) -> List[Dict[str, str]]:
     ctx = f"Last Q: {last_question}\nLast A: {last_answer}\n"
@@ -171,14 +167,11 @@ def build_followup_messages(last_question: str, last_answer: str) -> List[Dict[s
         {"role": "user", "content": user_instruction}
     ]
 
-
 def call_followup_ack(answer_text: str, upcoming_question: str) -> str:
     """Generate a short, human acknowledgment line that bridges into the follow-up."""
     if not _model_available():
-        # Smarter local fallback that still connects to curiosity
         core = " ".join(answer_text.strip().split())[:60]
-        return f"That part about {core} has me curious."
-
+        return _sanitize_ack(f"That part about {core} has me curious.")
     messages = [
         {"role": "system", "content": FOLLOWUP_ACK_SYSTEM},
         {"role": "user", "content":
@@ -200,18 +193,15 @@ def call_followup_ack(answer_text: str, upcoming_question: str) -> str:
         ack = (data.get("ack") or "").strip()
         if not ack:
             raise ValueError("empty ack")
-        return ack
+        return _sanitize_ack(ack)
     except Exception:
-        # Resilient fallback that still feels connected
         snippet = answer_text.strip().split(".")[0][:60]
-        return f"That note about {snippet} has me interested."
+        return _sanitize_ack(f"That note about {snippet} has me interested.")
 
 def should_follow_up(answer_text: str) -> bool:
     """Use OpenAI to semantically decide if a follow-up is warranted."""
     if not _model_available():
-        # Fallback: skip trivial short replies
         return len(answer_text.strip()) > 40
-
     messages = [
         {"role": "system", "content": FOLLOWUP_DECISION_SYSTEM},
         {"role": "user", "content": f"Answer: {answer_text.strip()}"}
@@ -228,13 +218,10 @@ def should_follow_up(answer_text: str) -> bool:
     except Exception:
         return False
 
-
 def call_interviewer(history: List[Dict[str, str]], stage_idx: int) -> Dict[str, str]:
     if not _model_available():
         return {"ack": "Got it—thanks for sharing.", "next_question": pick_variant(stage_idx)}
-
     messages = build_interviewer_messages(history, stage_idx)
-
     try:
         resp = client.chat.completions.create(
             model=OPENAI_MODEL,
@@ -243,19 +230,15 @@ def call_interviewer(history: List[Dict[str, str]], stage_idx: int) -> Dict[str,
             response_format={"type": "json_object"}
         )
         data = json.loads(resp.choices[0].message.content)
-        return {
-            "ack": data.get("ack", ""),
-            "next_question": data.get("next_question", pick_variant(stage_idx))
-        }
+        ack = _sanitize_ack(data.get("ack", ""))
+        return {"ack": ack, "next_question": data.get("next_question", pick_variant(stage_idx))}
     except Exception:
-        # Safe fallback so the flow continues even if the API hiccups
         return {"ack": "Thanks for sharing.", "next_question": pick_variant(stage_idx)}
 
-
 def call_followup(last_q: str, last_a: str) -> str:
-    """Return a single follow-up question (string)."""
+    """Return a single follow-up question (string), prefixed with 'As a follow-up,'."""
     if not _model_available():
-        return "What specific detail or feeling stands out from that moment?"
+        return "As a follow-up, what specific detail or feeling stands out from that moment?"
     messages = build_followup_messages(last_q, last_a)
     resp = client.chat.completions.create(
         model=OPENAI_MODEL,
@@ -265,10 +248,13 @@ def call_followup(last_q: str, last_a: str) -> str:
     )
     try:
         data = json.loads(resp.choices[0].message.content)
-        return data.get("next_question", "What specific detail or feeling stands out from that moment?")
+        follow_q = data.get("next_question", "").strip()
+        if not follow_q.lower().startswith("as a follow-up"):
+            follow_q = f"As a follow-up, {follow_q[0].lower() + follow_q[1:]}" if follow_q else \
+                "As a follow-up, could you tell me more about that?"
+        return follow_q
     except Exception:
-        return "What specific detail or feeling stands out from that moment?"
-
+        return "As a follow-up, could you tell me more about that?"
 
 def build_recap_messages(history: List[Dict[str, str]]) -> List[Dict[str, str]]:
     structured = {f"step_{i + 1}": t for i, t in enumerate(history)}
@@ -280,7 +266,6 @@ def build_recap_messages(history: List[Dict[str, str]]) -> List[Dict[str, str]]:
         {"role": "system", "content": RECAP_SYSTEM},
         {"role": "user", "content": guidance + "\n\nQ&A JSON:\n" + json.dumps(structured)}
     ]
-
 
 def call_recap(history: List[Dict[str, str]]) -> Dict[str, str]:
     if not _model_available():
@@ -302,35 +287,6 @@ def call_recap(history: List[Dict[str, str]]) -> Dict[str, str]:
         return {"title": data.get("title", "Race Recap"), "recap": data.get("recap", "")}
     except Exception:
         return {"title": "Race Recap", "recap": "Thanks for the interview!"}
-
-
-# ---------- (kept) snippet helpers, used only for fallback paths ----------
-def extract_interesting_snippet(text: str) -> str:
-    if not text:
-        return ""
-    text_lc = text.lower()
-    keywords = [
-        "trail braking", "left-foot", "left foot", "apex", "rotation", "rotate", "throttle",
-        "cone", "cones", "dnf", "spin", "slide", "clean run", "time", "seconds", "position",
-        "psi", "pressure", "tire", "skid plate", "spring", "damper", "washboard", "ruts", "off-camber"
-    ]
-    for kw in keywords:
-        pos = text_lc.find(kw)
-        if pos != -1:
-            start = max(0, pos - 20)
-            end = min(len(text), pos + 40)
-            snippet = text[start:end].strip()
-            return snippet[:70] + ("…" if len(snippet) > 70 else "")
-    t = " ".join(text.strip().split())
-    return t[:70] + ("…" if len(t) > 70 else "")
-
-
-def _short_snippet(text: str, max_len: int = 70) -> str:
-    if not text:
-        return ""
-    t = " ".join(text.strip().split())
-    return t[:max_len] + ("…" if len(t) > max_len else "")
-
 
 # ---------- UI ----------
 INDEX_HTML = """<!doctype html>
@@ -477,20 +433,17 @@ INDEX_HTML = """<!doctype html>
 def index():
     return render_template_string(INDEX_HTML)
 
-
 def get_sid() -> str:
     if "sid" not in session:
         import secrets
         session["sid"] = secrets.token_hex(12)
     return session["sid"]
 
-
 def ensure_state() -> Dict[str, Any]:
     sid = get_sid()
     if sid not in SESSIONS:
         SESSIONS[sid] = {"stage": 0, "history": [], "followup_pending": False}
     return SESSIONS[sid]
-
 
 @app.route("/start", methods=["POST"])
 def start():
@@ -500,7 +453,6 @@ def start():
     state["followup_pending"] = False
     q = pick_variant(0)
     return jsonify({"ack": "", "question": q, "stage": state["stage"]})
-
 
 @app.route("/answer", methods=["POST"])
 def answer():
@@ -540,7 +492,6 @@ def answer():
     if should_follow_up(user_answer):
         follow_q = call_followup(last_q, user_answer)
         state["followup_pending"] = True
-        # NEW: LLM-crafted acknowledgment that bridges into the follow-up topic
         ack_line = call_followup_ack(user_answer, follow_q)
 
         return jsonify({
@@ -567,7 +518,6 @@ def answer():
         "stage": next_stage
     })
 
-
 @app.route("/finish", methods=["POST"])
 def finish_now():
     state = ensure_state()
@@ -575,16 +525,15 @@ def finish_now():
     state["followup_pending"] = False
     return jsonify({"done": True, **recap})
 
-
 @app.route("/reset", methods=["POST"])
 def reset():
     sid = get_sid()
     SESSIONS.pop(sid, None)
     return jsonify({"ok": True})
 
-
 @app.route("/save", methods=["POST"])
 def save_markdown():
+    """Save the current interview (Q&A + recap) to a markdown file."""
     payload = request.get_json(force=True) or {}
     driver_name = (payload.get("driverName") or "").strip()
     safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", driver_name) or "unknown"
@@ -627,6 +576,11 @@ def save_markdown():
 
     return jsonify({"saved": True, "filename": str(filename)})
 
+
+# Optional: quiet the favicon 404 in dev
+@app.route("/favicon.ico")
+def favicon():
+    return ("", 204)
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
