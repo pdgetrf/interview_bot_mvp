@@ -114,6 +114,19 @@ FOLLOWUP_DECISION_SYSTEM = (
     "- Otherwise (e.g., if the answer is just a fact like their name or car model), return false."
 )
 
+# NEW: LLM-crafted acknowledgment for follow-ups
+FOLLOWUP_ACK_SYSTEM = (
+    "You are 'Pit Lane Pal'. Write ONE brief, warm acknowledgment reacting to the driver's last answer.\n"
+    "Goal: make it feel like a human bridge into the next follow-up question.\n"
+    "Strict rules:\n"
+    "- Output JSON only: {\"ack\": \"...\"}\n"
+    "- 1 sentence, ≤ 18 words, no emojis.\n"
+    "- Reference one concrete detail or feeling from the driver's answer.\n"
+    "- Lead naturally into the upcoming follow-up topic; do NOT repeat that question or ask a new one.\n"
+    "- You MAY include a short exact quote (3–6 words) if it fits; never cut words mid-quote.\n"
+    "- Avoid generic phrases like 'Got it' or 'Thanks for sharing'."
+)
+
 
 # ---------- Helpers ----------
 def _model_available() -> bool:
@@ -159,6 +172,40 @@ def build_followup_messages(last_question: str, last_answer: str) -> List[Dict[s
     ]
 
 
+def call_followup_ack(answer_text: str, upcoming_question: str) -> str:
+    """Generate a short, human acknowledgment line that bridges into the follow-up."""
+    if not _model_available():
+        # Smarter local fallback that still connects to curiosity
+        core = " ".join(answer_text.strip().split())[:60]
+        return f"That part about {core} has me curious."
+
+    messages = [
+        {"role": "system", "content": FOLLOWUP_ACK_SYSTEM},
+        {"role": "user", "content":
+            "Driver's last answer:\n"
+            f"{answer_text.strip()}\n\n"
+            "You're about to ask this follow-up (for context only—don't repeat it):\n"
+            f"{upcoming_question.strip()}\n"
+            "Return JSON with key 'ack' only."
+         }
+    ]
+    try:
+        resp = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=messages,
+            temperature=0.6,
+            response_format={"type": "json_object"}
+        )
+        data = json.loads(resp.choices[0].message.content)
+        ack = (data.get("ack") or "").strip()
+        if not ack:
+            raise ValueError("empty ack")
+        return ack
+    except Exception:
+        # Resilient fallback that still feels connected
+        snippet = answer_text.strip().split(".")[0][:60]
+        return f"That note about {snippet} has me interested."
+
 def should_follow_up(answer_text: str) -> bool:
     """Use OpenAI to semantically decide if a follow-up is warranted."""
     if not _model_available():
@@ -185,24 +232,29 @@ def should_follow_up(answer_text: str) -> bool:
 def call_interviewer(history: List[Dict[str, str]], stage_idx: int) -> Dict[str, str]:
     if not _model_available():
         return {"ack": "Got it—thanks for sharing.", "next_question": pick_variant(stage_idx)}
+
     messages = build_interviewer_messages(history, stage_idx)
-    resp = client.chat.completions.create(
-        model=OPENAI_MODEL,
-        messages=messages,
-        temperature=0.7,
-        response_format={"type": "json_object"}
-    )
+
     try:
+        resp = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=messages,
+            temperature=0.7,
+            response_format={"type": "json_object"}
+        )
         data = json.loads(resp.choices[0].message.content)
-        return {"ack": data.get("ack", ""), "next_question": data.get("next_question", pick_variant(stage_idx))}
+        return {
+            "ack": data.get("ack", ""),
+            "next_question": data.get("next_question", pick_variant(stage_idx))
+        }
     except Exception:
+        # Safe fallback so the flow continues even if the API hiccups
         return {"ack": "Thanks for sharing.", "next_question": pick_variant(stage_idx)}
 
 
 def call_followup(last_q: str, last_a: str) -> str:
     """Return a single follow-up question (string)."""
     if not _model_available():
-        # Simple fallback
         return "What specific detail or feeling stands out from that moment?"
     messages = build_followup_messages(last_q, last_a)
     resp = client.chat.completions.create(
@@ -220,11 +272,13 @@ def call_followup(last_q: str, last_a: str) -> str:
 
 def build_recap_messages(history: List[Dict[str, str]]) -> List[Dict[str, str]]:
     structured = {f"step_{i + 1}": t for i, t in enumerate(history)}
+    guidance = (
+        "Use ONLY details present in this interview. If a number or proper noun isn't here, leave it out.\n"
+        "Prefer concrete nouns and short clauses over vague praise. Keep it grounded and local-club plausible."
+    )
     return [
         {"role": "system", "content": RECAP_SYSTEM},
-        {"role": "user",
-         "content": "Please write the recap in the driver's first-person perspective from this interview: "
-                    + json.dumps(structured)}
+        {"role": "user", "content": guidance + "\n\nQ&A JSON:\n" + json.dumps(structured)}
     ]
 
 
@@ -240,7 +294,7 @@ def call_recap(history: List[Dict[str, str]]) -> Dict[str, str]:
     resp = client.chat.completions.create(
         model=OPENAI_MODEL,
         messages=messages,
-        temperature=0.6,
+        temperature=0.7,
         response_format={"type": "json_object"}
     )
     try:
@@ -250,18 +304,14 @@ def call_recap(history: List[Dict[str, str]]) -> Dict[str, str]:
         return {"title": "Race Recap", "recap": "Thanks for the interview!"}
 
 
-# ---------- Interesting-snippet extraction for follow-up acks ----------
+# ---------- (kept) snippet helpers, used only for fallback paths ----------
 def extract_interesting_snippet(text: str) -> str:
-    """Try to pull a short phrase from the answer that sounds interesting."""
     if not text:
         return ""
     text_lc = text.lower()
     keywords = [
-        # techniques & handling
         "trail braking", "left-foot", "left foot", "apex", "rotation", "rotate", "throttle",
-        # incidents / metrics
         "cone", "cones", "dnf", "spin", "slide", "clean run", "time", "seconds", "position",
-        # setup / surface
         "psi", "pressure", "tire", "skid plate", "spring", "damper", "washboard", "ruts", "off-camber"
     ]
     for kw in keywords:
@@ -271,7 +321,6 @@ def extract_interesting_snippet(text: str) -> str:
             end = min(len(text), pos + 40)
             snippet = text[start:end].strip()
             return snippet[:70] + ("…" if len(snippet) > 70 else "")
-    # fallback short summary
     t = " ".join(text.strip().split())
     return t[:70] + ("…" if len(t) > 70 else "")
 
@@ -423,7 +472,6 @@ INDEX_HTML = """<!doctype html>
 </html>
 """
 
-
 # ---------- Routes ----------
 @app.route("/", methods=["GET"])
 def index():
@@ -440,7 +488,6 @@ def get_sid() -> str:
 def ensure_state() -> Dict[str, Any]:
     sid = get_sid()
     if sid not in SESSIONS:
-        # followup_pending: True when we have asked a follow-up and are waiting for its answer
         SESSIONS[sid] = {"stage": 0, "history": [], "followup_pending": False}
     return SESSIONS[sid]
 
@@ -471,18 +518,16 @@ def answer():
         last_q = STORYLINE[stage]["variants"][0]
     state["history"].append({"q": last_q, "a": user_answer})
 
-    # --- Case 1: user is replying to a follow-up ---
+    # Case 1: replying to a follow-up -> advance storyline
     if followup_pending:
         state["followup_pending"] = False
         next_stage = stage + 1
         state["stage"] = next_stage
 
-        # If we've finished the last stage, go to recap
         if next_stage >= len(STORYLINE):
             recap = call_recap(state["history"])
             return jsonify({"done": True, **recap})
 
-        # Otherwise, continue the main storyline
         result = call_interviewer(state["history"], next_stage)
         return jsonify({
             "done": False,
@@ -491,24 +536,21 @@ def answer():
             "stage": next_stage
         })
 
-    # --- Case 2: semantic check — should we do a follow-up? ---
+    # Case 2: decide semantically whether to follow up
     if should_follow_up(user_answer):
         follow_q = call_followup(last_q, user_answer)
         state["followup_pending"] = True
+        # NEW: LLM-crafted acknowledgment that bridges into the follow-up topic
+        ack_line = call_followup_ack(user_answer, follow_q)
 
-        snippet = extract_interesting_snippet(user_answer) or _short_snippet(user_answer, 70)
-        human_ack = f"Oh, '{snippet}' is interesting — tell me more on this." if snippet else \
-            "Oh, that’s interesting — tell me more on this."
-
-        # ✅ Return ONLY the follow-up question — do NOT proceed to next main question
         return jsonify({
             "done": False,
-            "ack": human_ack,
+            "ack": ack_line,
             "question": follow_q,
             "stage": stage
         })
 
-    # --- Case 3: no follow-up needed, move straight to next stage ---
+    # Case 3: no follow-up -> move to next main stage
     next_stage = stage + 1
     state["stage"] = next_stage
     state["followup_pending"] = False
@@ -530,7 +572,6 @@ def answer():
 def finish_now():
     state = ensure_state()
     recap = call_recap(state.get("history", []))
-    # Finish clears followup state so a new run can start clean, but keeps history for saving
     state["followup_pending"] = False
     return jsonify({"done": True, **recap})
 
@@ -544,10 +585,6 @@ def reset():
 
 @app.route("/save", methods=["POST"])
 def save_markdown():
-    """Save the current interview (Q&A + recap) to a markdown file.
-    Filename pattern: interview_[name]_[timestamp].md
-    Saved into ./interviews/ directory.
-    """
     payload = request.get_json(force=True) or {}
     driver_name = (payload.get("driverName") or "").strip()
     safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", driver_name) or "unknown"
@@ -555,7 +592,6 @@ def save_markdown():
     state = ensure_state()
     history = state.get("history", [])
 
-    # Build recap from history (ensures consistency with current state)
     recap = call_recap(history)
     title = recap.get("title", "Race Recap")
     body = recap.get("recap", "")
