@@ -73,30 +73,60 @@ SYSTEM_PROMPT = (
     "Return ONLY valid JSON with keys: ack, next_question."
 )
 
-# Extra system for FOLLOW-UPS (detail/feeling probe)
+# Follow-up question generation
 FOLLOWUP_SYSTEM = (
     "You are 'Pit Lane Pal', asking a SINGLE follow-up question based ONLY on the user's most recent answer.\n"
     "Goal: pull one SPECIFIC detail (e.g., a number, section, technique) OR a feeling (e.g., frustration, excitement).\n"
     "Rules: keep it short (one sentence), no multi-part, no emojis, no repeating earlier questions. Return JSON with key: next_question."
 )
 
+# Recap writer
 RECAP_SYSTEM = (
-    "You are a writer who turns structured Q&A into a tight, readable racer recap (180–280 words).\n"
-    "Write the recap in the driver's first-person voice (use 'I').\n"
-    "Keep it positive, and preserve key details (car, highlight, challenge, lesson, plan).\n"
-    "Return JSON with keys: title, recap. Title should be short and energetic (<= 60 chars)."
+    "You are a motorsport writer turning a short Q&A into a vivid, first-person racer recap.\n"
+    "Voice: natural, human, reflective but upbeat; vary sentence length; avoid hype and clichés.\n"
+    "Constraints:\n"
+    "- 220–300 words total.\n"
+    "- First-person (use 'I'). Past tense.\n"
+    "- Keep it truthful to the Q&A. If a detail (time, cones, position, section names, setup changes) appears in the Q&A, include it verbatim.\n"
+    "- Do NOT invent numbers or facts.\n"
+    "Required structure (implicitly, not as headings):\n"
+    "  1) Setting: event, surface/weather, and car/setup in one tight opening sentence or two.\n"
+    "  2) One highlight moment with a concrete course feature (e.g., slalom, off-camber left, washboards) and a sensory detail (dust, ruts, tire bite).\n"
+    "  3) One challenge: what went wrong, why it was hard, what I changed (technique or setup), and the result.\n"
+    "  4) Performance snapshot: at least one metric if present (best time, penalties, class position) + how it felt.\n"
+    "  5) Takeaway + next step: one clear lesson and one concrete plan (e.g., tire pressure tweak, left-foot braking drill).\n"
+    "Close with a single reflective line that sounds like a human racer thinking about the next event.\n"
+    "Return ONLY JSON with keys: title, recap. Title <= 60 chars, punchy but honest."
 )
 
+# NEW: semantic decision for whether a follow-up is warranted
+FOLLOWUP_DECISION_SYSTEM = (
+    "You are an evaluator that decides if a follow-up question is warranted "
+    "based on the driver's latest answer in a racing interview.\n\n"
+    "Rules:\n"
+    "- Respond ONLY with JSON {\"should_follow_up\": true/false}.\n"
+    "- Return true only if the answer contains something that merits deeper discussion, such as:\n"
+    "  1) a described struggle, challenge, or problem the driver faced,\n"
+    "  2) a modification or setup change AND its effect or impact,\n"
+    "  3) a clear emotional reaction or shift (relief, frustration, excitement, etc.),\n"
+    "  4) a performance detail (run times, penalties, position, etc.),\n"
+    "  5) a technical or driving technique (trail braking, rotation, throttle control, etc.).\n"
+    "- Otherwise (e.g., if the answer is just a fact like their name or car model), return false."
+)
+
+
+# ---------- Helpers ----------
 def _model_available() -> bool:
     return client is not None
+
 
 def pick_variant(stage_idx: int) -> str:
     import random
     return random.choice(STORYLINE[stage_idx]["variants"]) if 0 <= stage_idx < len(STORYLINE) else ""
 
+
 def build_interviewer_messages(history: List[Dict[str, str]], stage_idx: int) -> List[Dict[str, str]]:
     direction = STORYLINE[stage_idx]["direction"]
-    # Build a compact transcript for context
     transcript = []
     for turn in history:
         transcript.append(f"Q: {turn['q']}")
@@ -115,18 +145,42 @@ def build_interviewer_messages(history: List[Dict[str, str]], stage_idx: int) ->
         {"role": "user", "content": user_instruction}
     ]
 
+
 def build_followup_messages(last_question: str, last_answer: str) -> List[Dict[str, str]]:
     ctx = f"Last Q: {last_question}\nLast A: {last_answer}\n"
     user_instruction = (
             "From the last answer, ask ONE targeted follow-up to capture a specific detail or feeling.\n"
             "Do not repeat the last question or introduce a new topic.\n"
-            "Return JSON with key: next_question.\n\n"
-            + ctx
+            "Return JSON with key: next_question.\n\n" + ctx
     )
     return [
         {"role": "system", "content": FOLLOWUP_SYSTEM},
         {"role": "user", "content": user_instruction}
     ]
+
+
+def should_follow_up(answer_text: str) -> bool:
+    """Use OpenAI to semantically decide if a follow-up is warranted."""
+    if not _model_available():
+        # Fallback: skip trivial short replies
+        return len(answer_text.strip()) > 40
+
+    messages = [
+        {"role": "system", "content": FOLLOWUP_DECISION_SYSTEM},
+        {"role": "user", "content": f"Answer: {answer_text.strip()}"}
+    ]
+    try:
+        resp = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=messages,
+            temperature=0,
+            response_format={"type": "json_object"}
+        )
+        data = json.loads(resp.choices[0].message.content)
+        return bool(data.get("should_follow_up", False))
+    except Exception:
+        return False
+
 
 def call_interviewer(history: List[Dict[str, str]], stage_idx: int) -> Dict[str, str]:
     if not _model_available():
@@ -144,10 +198,11 @@ def call_interviewer(history: List[Dict[str, str]], stage_idx: int) -> Dict[str,
     except Exception:
         return {"ack": "Thanks for sharing.", "next_question": pick_variant(stage_idx)}
 
+
 def call_followup(last_q: str, last_a: str) -> str:
     """Return a single follow-up question (string)."""
     if not _model_available():
-        # Simple heuristic fallback
+        # Simple fallback
         return "What specific detail or feeling stands out from that moment?"
     messages = build_followup_messages(last_q, last_a)
     resp = client.chat.completions.create(
@@ -162,14 +217,16 @@ def call_followup(last_q: str, last_a: str) -> str:
     except Exception:
         return "What specific detail or feeling stands out from that moment?"
 
+
 def build_recap_messages(history: List[Dict[str, str]]) -> List[Dict[str, str]]:
     structured = {f"step_{i + 1}": t for i, t in enumerate(history)}
     return [
         {"role": "system", "content": RECAP_SYSTEM},
         {"role": "user",
-         "content": "Please write the recap in the driver's first-person perspective from this interview: " + json.dumps(
-             structured)}
+         "content": "Please write the recap in the driver's first-person perspective from this interview: "
+                    + json.dumps(structured)}
     ]
+
 
 def call_recap(history: List[Dict[str, str]]) -> Dict[str, str]:
     if not _model_available():
@@ -195,77 +252,39 @@ def call_recap(history: List[Dict[str, str]]) -> Dict[str, str]:
 
 # ---------- Interesting-snippet extraction for follow-up acks ----------
 def extract_interesting_snippet(text: str) -> str:
-    """
-    Try to pull a short phrase from the answer that sounds interesting:
-    1) driving skill/technique
-    2) interesting moment/event
-    3) modification/setup
-    Falls back to '' if nothing matches.
-    """
+    """Try to pull a short phrase from the answer that sounds interesting."""
     if not text:
         return ""
-
-    # Keyword buckets (lowercase)
-    skills = [
-        "trail braking", "left-foot braking", "left foot braking",
-        "late apex", "early apex", "double apex", "heel-toe", "heel toe",
-        "throttle modulation", "rotation", "lift-off", "lift off",
-        "scandinavian flick", "handbrake", "feathering the throttle",
-        "line choice", "braking point", "turn-in", "turn in", "apex", "exit speed"
-    ]
-    moments = [
-        "spin", "half-spin", "cone", "red flag", "off-course", "off course",
-        "save", "slide", "snap oversteer", "tank slapper", "big moment",
-        "launch", "start", "finish", "holeshot", "hairpin", "chicane", "delta"
-    ]
-    mods = [
-        "tires", "tyres", "tire pressures", "pressure", "sway bar", "anti-roll bar",
-        "arb", "camber", "toe", "caster", "coilovers", "springs", "dampers",
-        "alignment", "pad", "pads", "brake pads", "rotors", "intake", "exhaust",
-        "tune", "map", "ecu", "wing", "spoiler", "splitter", "diffuser", "aero",
-        "limited-slip", "lsd", "gear", "gearing"
-    ]
-
-    buckets = [skills, moments, mods]
     text_lc = text.lower()
-
-    def window_phrase(src: str, match_start: int, match_end: int, words_each_side: int = 4) -> str:
-        # Get a short window around the match (~ up to 70 chars)
-        import re as _re
-        tokens = list(_re.finditer(r"\S+", src))
-        token_idx = None
-        for i, m in enumerate(tokens):
-            if m.start() <= match_start < m.end():
-                token_idx = i
-                break
-        if token_idx is None:
-            phrase = src[match_start:match_end]
-        else:
-            start_idx = max(0, token_idx - words_each_side)
-            end_idx = min(len(tokens) - 1, token_idx + words_each_side)
-            phrase = src[tokens[start_idx].start():tokens[end_idx].end()]
-        phrase = " ".join(phrase.strip().split())
-        return phrase[:70] + ("…" if len(phrase) > 70 else "")
-
-    for bucket in buckets:
-        for kw in bucket:
-            pos = text_lc.find(kw)
-            if pos != -1:
-                return window_phrase(text, pos, pos + len(kw))
-
-    return ""
+    keywords = [
+        # techniques & handling
+        "trail braking", "left-foot", "left foot", "apex", "rotation", "rotate", "throttle",
+        # incidents / metrics
+        "cone", "cones", "dnf", "spin", "slide", "clean run", "time", "seconds", "position",
+        # setup / surface
+        "psi", "pressure", "tire", "skid plate", "spring", "damper", "washboard", "ruts", "off-camber"
+    ]
+    for kw in keywords:
+        pos = text_lc.find(kw)
+        if pos != -1:
+            start = max(0, pos - 20)
+            end = min(len(text), pos + 40)
+            snippet = text[start:end].strip()
+            return snippet[:70] + ("…" if len(snippet) > 70 else "")
+    # fallback short summary
+    t = " ".join(text.strip().split())
+    return t[:70] + ("…" if len(t) > 70 else "")
 
 
 def _short_snippet(text: str, max_len: int = 70) -> str:
-    """Generic safe fallback snippet."""
     if not text:
         return ""
     t = " ".join(text.strip().split())
     return t[:max_len] + ("…" if len(t) > max_len else "")
 
-# ---------- Routes ----------
-INDEX_HTML = """
-<!doctype html>
+
+# ---------- UI ----------
+INDEX_HTML = """<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
@@ -276,7 +295,7 @@ INDEX_HTML = """
       .card { max-width: 760px; margin: 0 auto; border: 1px solid #333; border-radius: 12px; padding: 16px; background: #1e1e1e; }
       .row { display: flex; gap: 8px; margin-top: 12px; }
       .q { font-weight: 600; margin-top: 16px; }
-      .ack { color: #bbb; margin: 8px 0; }
+      .ack { color: #bbb; margin: 8px 0; min-height: 20px; }
       textarea { width: 100%; min-height: 84px; padding: 8px; background: #222; color: #eee; border: 1px solid #444; border-radius: 6px; }
       button { padding: 10px 16px; border-radius: 10px; border: 1px solid #555; background: #333; color: #eee; cursor: pointer; }
       button.primary { background: #007acc; border: none; color: #fff; }
@@ -350,6 +369,7 @@ INDEX_HTML = """
         aEl.value = '';
         qaBlock.classList.remove('hidden');
         recapBlock.classList.add('hidden');
+        aEl.focus();
       }
 
       async function send() {
@@ -366,6 +386,7 @@ INDEX_HTML = """
           ackEl.textContent = data.ack || '';
           qEl.textContent = data.question || '';
           aEl.value = '';
+          aEl.focus();
         }
       }
 
@@ -402,15 +423,19 @@ INDEX_HTML = """
 </html>
 """
 
+
+# ---------- Routes ----------
 @app.route("/", methods=["GET"])
 def index():
     return render_template_string(INDEX_HTML)
+
 
 def get_sid() -> str:
     if "sid" not in session:
         import secrets
         session["sid"] = secrets.token_hex(12)
     return session["sid"]
+
 
 def ensure_state() -> Dict[str, Any]:
     sid = get_sid()
@@ -419,6 +444,7 @@ def ensure_state() -> Dict[str, Any]:
         SESSIONS[sid] = {"stage": 0, "history": [], "followup_pending": False}
     return SESSIONS[sid]
 
+
 @app.route("/start", methods=["POST"])
 def start():
     state = ensure_state()
@@ -426,8 +452,8 @@ def start():
     state["history"] = []
     state["followup_pending"] = False
     q = pick_variant(0)
-    ack = ""
-    return jsonify({"ack": ack, "question": q, "stage": state["stage"]})
+    return jsonify({"ack": "", "question": q, "stage": state["stage"]})
+
 
 @app.route("/answer", methods=["POST"])
 def answer():
@@ -445,17 +471,18 @@ def answer():
         last_q = STORYLINE[stage]["variants"][0]
     state["history"].append({"q": last_q, "a": user_answer})
 
-    # If we were answering a follow-up, clear the flag and proceed to next main stage
+    # --- Case 1: user is replying to a follow-up ---
     if followup_pending:
         state["followup_pending"] = False
         next_stage = stage + 1
         state["stage"] = next_stage
 
+        # If we've finished the last stage, go to recap
         if next_stage >= len(STORYLINE):
             recap = call_recap(state["history"])
             return jsonify({"done": True, **recap})
 
-        # Ask next PLANNED question
+        # Otherwise, continue the main storyline
         result = call_interviewer(state["history"], next_stage)
         return jsonify({
             "done": False,
@@ -464,24 +491,40 @@ def answer():
             "stage": next_stage
         })
 
-    # Not currently in a follow-up: generate ONE follow-up question based on the last answer
-    follow_q = call_followup(last_q, user_answer)
-    state["followup_pending"] = True
+    # --- Case 2: semantic check — should we do a follow-up? ---
+    if should_follow_up(user_answer):
+        follow_q = call_followup(last_q, user_answer)
+        state["followup_pending"] = True
 
-    # Make the ack sound more human and reference the most interesting part
-    snippet = extract_interesting_snippet(user_answer) or _short_snippet(user_answer, 70)
-    if snippet:
-        human_ack = f"Oh, '{snippet}' is interesting — tell me more on this."
-    else:
-        human_ack = "Oh, that’s interesting — tell me more on this."
+        snippet = extract_interesting_snippet(user_answer) or _short_snippet(user_answer, 70)
+        human_ack = f"Oh, '{snippet}' is interesting — tell me more on this." if snippet else \
+            "Oh, that’s interesting — tell me more on this."
 
-    # Keep stage the same while we ask follow-up
+        # ✅ Return ONLY the follow-up question — do NOT proceed to next main question
+        return jsonify({
+            "done": False,
+            "ack": human_ack,
+            "question": follow_q,
+            "stage": stage
+        })
+
+    # --- Case 3: no follow-up needed, move straight to next stage ---
+    next_stage = stage + 1
+    state["stage"] = next_stage
+    state["followup_pending"] = False
+
+    if next_stage >= len(STORYLINE):
+        recap = call_recap(state["history"])
+        return jsonify({"done": True, **recap})
+
+    result = call_interviewer(state["history"], next_stage)
     return jsonify({
         "done": False,
-        "ack": human_ack,
-        "question": follow_q,
-        "stage": stage
+        "ack": result.get("ack", ""),
+        "question": result.get("next_question", pick_variant(next_stage)),
+        "stage": next_stage
     })
+
 
 @app.route("/finish", methods=["POST"])
 def finish_now():
@@ -491,11 +534,13 @@ def finish_now():
     state["followup_pending"] = False
     return jsonify({"done": True, **recap})
 
+
 @app.route("/reset", methods=["POST"])
 def reset():
     sid = get_sid()
     SESSIONS.pop(sid, None)
     return jsonify({"ok": True})
+
 
 @app.route("/save", methods=["POST"])
 def save_markdown():
@@ -545,6 +590,7 @@ def save_markdown():
     path.write_text(md, encoding='utf-8')
 
     return jsonify({"saved": True, "filename": str(filename)})
+
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
