@@ -444,6 +444,7 @@ INDEX_HTML = """<!doctype html>
         box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.2);
       }
 
+      /* --- Acknowledgment + Question sections --- */
       #qa-block { margin-top: 28px; }
 
       .ack-box, .question-box {
@@ -452,6 +453,8 @@ INDEX_HTML = """<!doctype html>
         padding: 16px 18px;
         background: var(--panel-2);
         margin: 10px 0 16px 0;
+        position: relative;
+        transition: background-color 0.3s ease;
       }
 
       .ack-box {
@@ -470,7 +473,7 @@ INDEX_HTML = """<!doctype html>
       .ack { margin: 0; font-size: 16px; line-height: 1.55; }
       .q { margin: 0; font-weight: 600; font-size: 19px; line-height: 1.45; }
 
-      /* --- Improved textarea --- */
+      /* --- Improved textarea for easier typing --- */
       textarea {
         width: 100%;
         min-height: 220px;
@@ -500,6 +503,34 @@ INDEX_HTML = """<!doctype html>
           inset 0 1px 0 rgba(255,255,255,0.05);
       }
 
+      /* --- Softer, diffused inner flash --- */
+/* --- Softer, cooler inner flash color --- */
+@keyframes uiFlash {
+  0% {
+    background-color: inherit;
+    box-shadow: inset 0 0 0 0 rgba(0,160,255,0);
+  }
+  25% {
+    background-color: #2b4256; /* softer, cooler tone */
+    box-shadow:
+      inset 0 0 8px 2px rgba(0,160,255,0.16),
+      inset 0 0 16px 4px rgba(0,180,255,0.08);
+  }
+  60% {
+    background-color: #253a4d; /* still soft, slightly lighter */
+    box-shadow:
+      inset 0 0 10px 3px rgba(0,160,255,0.10),
+      inset 0 0 18px 6px rgba(0,180,255,0.06);
+  }
+  100% {
+    background-color: inherit;
+    box-shadow: inset 0 0 0 0 rgba(0,160,255,0);
+  }
+}
+.ack-box.flash { animation: uiFlash 0.9s ease-out; }
+.question-box.flash { animation: uiFlash 0.9s ease-out; }
+
+
       button {
         padding: 10px 16px;
         border-radius: 10px;
@@ -528,16 +559,7 @@ INDEX_HTML = """<!doctype html>
       .recap { white-space: pre-wrap; margin-top: 24px; }
       .hidden { display: none; }
 
-      /* --- Flash animation: slower and brighter --- */
-      @keyframes uiFlash {
-        0%   { background-color: #1d2126; box-shadow: 0 0 0 0 rgba(30,144,255,0); }
-        10%  { background-color: #275173; box-shadow: 0 0 25px 6px rgba(0,150,255,0.7); }
-        40%  { background-color: #2e5e83; box-shadow: 0 0 35px 10px rgba(0,150,255,0.5); }
-        100% { background-color: #1d2126; box-shadow: 0 0 0 0 rgba(0,140,255,0); }
-      }
-      .ack-box.flash { animation: uiFlash 1.3s ease-out; }
-      .question-box.flash { animation: uiFlash 0.5s ease-out; }
-
+      /* --- Spinner --- */
       .spinner {
         display: flex;
         justify-content: center;
@@ -570,12 +592,12 @@ INDEX_HTML = """<!doctype html>
         </div>
 
         <div id="qa-block" class="hidden">
-          <div class="ack-box" id="ack-box">
+          <div class="ack-box">
             <div class="ack-label" id="ack-label">Welcome to the interview. I'm your interviewer.</div>
             <div class="ack" id="ack"></div>
           </div>
 
-          <div class="question-box" id="question-box">
+          <div class="question-box">
             <div class="question-label">Next question</div>
             <div class="q" id="question"></div>
           </div>
@@ -624,11 +646,9 @@ INDEX_HTML = """<!doctype html>
       const saveBtn = document.getElementById('save');
       const nameEl = document.getElementById('driverName');
       const ackEl = document.getElementById('ack');
+      const ackLabel = document.getElementById('ack-label');
       const qEl = document.getElementById('question');
       const aEl = document.getElementById('answer');
-      const ackBox = document.getElementById('ack-box');
-      const qBox = document.getElementById('question-box');
-      const ackLabel = document.getElementById('ack-label');
       const qaBlock = document.getElementById('qa-block');
       const recapBlock = document.getElementById('recap-block');
       const recapTitle = document.getElementById('recap-title');
@@ -638,6 +658,13 @@ INDEX_HTML = """<!doctype html>
 
       function setButtonsDisabled(disabled) {
         buttons.forEach(btn => btn.disabled = disabled);
+      }
+
+      function flashBox(el) {
+        if (!el) return;
+        el.classList.remove('flash');
+        void el.offsetWidth;
+        el.classList.add('flash');
       }
 
       function autosize(el) {
@@ -656,6 +683,7 @@ INDEX_HTML = """<!doctype html>
         const data = await api('/start');
         ackEl.textContent = data.ack || '';
         qEl.textContent = data.question || '';
+        ackLabel.textContent = "Welcome to the interview. I'm your interviewer.";
         resetAnswerBox();
         qaBlock.classList.remove('hidden');
         recapBlock.classList.add('hidden');
@@ -669,6 +697,7 @@ INDEX_HTML = """<!doctype html>
         setButtonsDisabled(true);
         try {
           const data = await api('/answer', { answer, question });
+          ackLabel.textContent = "";
           if (data.done) {
             recapTitle.textContent = data.title || 'Race Recap';
             recapEl.textContent = data.recap || '';
@@ -677,18 +706,8 @@ INDEX_HTML = """<!doctype html>
           } else {
             ackEl.textContent = data.ack || '';
             qEl.textContent = data.question || '';
-
-            if (ackLabel && ackLabel.style.display !== 'none') {
-              ackLabel.style.display = 'none';
-            }
-
-            // Trigger flash on ack then question
-            ackBox.classList.remove('flash');
-            qBox.classList.remove('flash');
-            void ackBox.offsetWidth; void qBox.offsetWidth;
-            ackBox.classList.add('flash');
-            setTimeout(() => qBox.classList.add('flash'), 300);
-
+            flashBox(document.querySelector('.ack-box'));
+            setTimeout(() => flashBox(document.querySelector('.question-box')), 200);
             resetAnswerBox();
           }
         } finally {
