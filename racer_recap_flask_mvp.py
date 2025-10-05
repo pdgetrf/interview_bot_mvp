@@ -444,7 +444,6 @@ INDEX_HTML = """<!doctype html>
         box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.2);
       }
 
-      /* --- Acknowledgment + Question sections --- */
       #qa-block { margin-top: 28px; }
 
       .ack-box, .question-box {
@@ -457,10 +456,7 @@ INDEX_HTML = """<!doctype html>
         transition: background-color 0.3s ease;
       }
 
-      .ack-box {
-        background: #1d2126;
-        color: var(--text);
-      }
+      .ack-box { background: #1d2126; color: var(--text); }
 
       .ack-label, .question-label {
         font-size: 12px;
@@ -473,7 +469,6 @@ INDEX_HTML = """<!doctype html>
       .ack { margin: 0; font-size: 16px; line-height: 1.55; }
       .q { margin: 0; font-weight: 600; font-size: 19px; line-height: 1.45; }
 
-      /* --- Improved textarea for easier typing --- */
       textarea {
         width: 100%;
         min-height: 220px;
@@ -487,49 +482,31 @@ INDEX_HTML = """<!doctype html>
         border-radius: 14px;
         font-size: 17px;
         line-height: 1.65;
-        letter-spacing: 0.005em;
         resize: vertical;
         outline: none;
         overflow: auto;
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
       }
-      textarea::placeholder {
-        color: color-mix(in oklab, var(--muted) 80%, #fff 20%);
-      }
+
+      textarea::placeholder { color: color-mix(in oklab, var(--muted) 80%, #fff 20%); }
       textarea:focus {
         border-color: var(--accent);
-        box-shadow:
-          0 0 0 3px rgba(10, 132, 255, 0.18),
-          inset 0 1px 0 rgba(255,255,255,0.05);
+        box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.18);
       }
 
-      /* --- Softer, diffused inner flash --- */
-/* --- Softer, cooler inner flash color --- */
-@keyframes uiFlash {
-  0% {
-    background-color: inherit;
-    box-shadow: inset 0 0 0 0 rgba(0,160,255,0);
-  }
-  25% {
-    background-color: #2b4256; /* softer, cooler tone */
-    box-shadow:
-      inset 0 0 8px 2px rgba(0,160,255,0.16),
-      inset 0 0 16px 4px rgba(0,180,255,0.08);
-  }
-  60% {
-    background-color: #253a4d; /* still soft, slightly lighter */
-    box-shadow:
-      inset 0 0 10px 3px rgba(0,160,255,0.10),
-      inset 0 0 18px 6px rgba(0,180,255,0.06);
-  }
-  100% {
-    background-color: inherit;
-    box-shadow: inset 0 0 0 0 rgba(0,160,255,0);
-  }
-}
-.ack-box.flash { animation: uiFlash 0.9s ease-out; }
-.question-box.flash { animation: uiFlash 0.9s ease-out; }
-
+      @keyframes uiFlash {
+        0% { background-color: inherit; box-shadow: inset 0 0 0 0 rgba(0,160,255,0); }
+        25% {
+          background-color: #2b4256;
+          box-shadow: inset 0 0 8px 2px rgba(0,160,255,0.16), inset 0 0 16px 4px rgba(0,180,255,0.08);
+        }
+        60% {
+          background-color: #253a4d;
+          box-shadow: inset 0 0 10px 3px rgba(0,160,255,0.10), inset 0 0 18px 6px rgba(0,180,255,0.06);
+        }
+        100% { background-color: inherit; box-shadow: inset 0 0 0 0 rgba(0,160,255,0); }
+      }
+      .ack-box.flash { animation: uiFlash 0.9s ease-out; }
+      .question-box.flash { animation: uiFlash 0.9s ease-out; }
 
       button {
         padding: 10px 16px;
@@ -543,33 +520,26 @@ INDEX_HTML = """<!doctype html>
       }
       button.primary { background: var(--accent); border: none; color: #fff; }
       button:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
-      button:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-        transform: none;
-      }
+      button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
-      .row-buttons {
-        display: flex;
-        gap: 12px;
-        flex-wrap: wrap;
-        margin-top: 16px;
-      }
+      .row-buttons { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
 
       .recap { white-space: pre-wrap; margin-top: 24px; }
       .hidden { display: none; }
 
-      /* --- Spinner --- */
+      /* --- Updated Spinner --- */
       .spinner {
         display: flex;
-        justify-content: center;
         align-items: center;
+        gap: 10px;
         margin-top: 20px;
         height: 40px;
         visibility: hidden;
+        color: var(--muted);
+        font-size: 14px;
       }
       .spinner.visible { visibility: visible; }
-      .spinner div {
+      .spinner .dot {
         width: 32px;
         height: 32px;
         border: 3px solid var(--accent);
@@ -585,15 +555,15 @@ INDEX_HTML = """<!doctype html>
       <div class="card">
         <div class="row">
           <div>
-            <h2>Racer Recap Interview (Apexiel Research)</h2>
-            <p class="muted">Answer a few guided questions to generate your recap. Text-only MVP.</p>
+            <h2>Racer Recap Interview</h2>
+            <p class="muted">An APEXIEL Prototype.</p>
           </div>
           <input id="driverName" type="text" placeholder="Your name (optional)" />
         </div>
 
         <div id="qa-block" class="hidden">
           <div class="ack-box">
-            <div class="ack-label" id="ack-label">Welcome to the interview. I'm your interviewer.</div>
+            <div class="ack-label" id="ack-label">Welcome to the interview.</div>
             <div class="ack" id="ack"></div>
           </div>
 
@@ -604,7 +574,10 @@ INDEX_HTML = """<!doctype html>
 
           <textarea id="answer" placeholder="Type your answer..."></textarea>
 
-          <div class="spinner" id="spinner"><div></div></div>
+          <div class="spinner" id="spinner" role="status" aria-live="polite">
+            <div class="dot"></div>
+            <span class="msg" id="spinner-ack"></span>
+          </div>
 
           <div class="row-buttons">
             <button id="submit" class="primary">Send</button>
@@ -615,7 +588,9 @@ INDEX_HTML = """<!doctype html>
         <div id="recap-block" class="hidden">
           <h3 id="recap-title"></h3>
           <div id="recap" class="recap"></div>
-          <div class="spinner" id="save-spinner"><div></div></div>
+          <div class="spinner" id="save-spinner" role="status" aria-live="polite">
+            <div class="dot"></div>
+          </div>
           <div class="row-buttons">
             <button id="save">Save Interview</button>
           </div>
@@ -654,7 +629,20 @@ INDEX_HTML = """<!doctype html>
       const recapTitle = document.getElementById('recap-title');
       const recapEl = document.getElementById('recap');
       const spinner = document.getElementById('spinner');
+      const spinnerAck = document.getElementById('spinner-ack');
       const saveSpinner = document.getElementById('save-spinner');
+
+      const SPINNER_ACK_VARIANTS = [
+        "Thanks — I got that.",
+        "Thanks, got it.",
+        "Appreciate it — received.",
+        "Thanks — processing that now.",
+        "Got it, thank you."
+      ];
+      function pickSpinnerAck() {
+        const i = Math.floor(Math.random() * SPINNER_ACK_VARIANTS.length);
+        return SPINNER_ACK_VARIANTS[i];
+      }
 
       function setButtonsDisabled(disabled) {
         buttons.forEach(btn => btn.disabled = disabled);
@@ -673,6 +661,7 @@ INDEX_HTML = """<!doctype html>
         const max = parseInt(getComputedStyle(el).maxHeight, 10) || 480;
         el.style.height = Math.min(el.scrollHeight, max) + 'px';
       }
+
       function resetAnswerBox() {
         aEl.value = '';
         autosize(aEl);
@@ -693,6 +682,7 @@ INDEX_HTML = """<!doctype html>
         const answer = aEl.value.trim();
         if (!answer) return;
         const question = qEl.textContent || '';
+        spinnerAck.textContent = pickSpinnerAck();
         spinner.classList.add('visible');
         setButtonsDisabled(true);
         try {
@@ -712,6 +702,7 @@ INDEX_HTML = """<!doctype html>
           }
         } finally {
           spinner.classList.remove('visible');
+          spinnerAck.textContent = "";
           setButtonsDisabled(false);
         }
       }
@@ -757,8 +748,7 @@ INDEX_HTML = """<!doctype html>
       if (saveBtn) saveBtn.onclick = saveNow;
     </script>
   </body>
-</html>
-"""
+</html>"""
 
 
 # ---------- Routes ----------
