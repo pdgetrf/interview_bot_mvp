@@ -493,6 +493,7 @@ INDEX_HTML = """<!doctype html>
         <div id="recap-block" class="hidden">
           <h3 id="recap-title"></h3>
           <div id="recap" class="recap"></div>
+          <div class="spinner" id="save-spinner"><div></div></div>
           <div class="row-buttons">
             <button id="save">Save Markdown</button>
           </div>
@@ -530,6 +531,7 @@ INDEX_HTML = """<!doctype html>
       const recapTitle = document.getElementById('recap-title');
       const recapEl = document.getElementById('recap');
       const spinner = document.getElementById('spinner');
+      const saveSpinner = document.getElementById('save-spinner');
 
       function setButtonsDisabled(disabled) {
         buttons.forEach(btn => btn.disabled = disabled);
@@ -589,11 +591,18 @@ INDEX_HTML = """<!doctype html>
 
       async function saveNow() {
         const driverName = (nameEl && nameEl.value) ? nameEl.value : '';
-        const data = await api('/save', { driverName });
-        if (data && data.saved) {
-          alert('Saved: ' + data.filename);
-        } else {
-          alert('Save failed.');
+        saveSpinner.classList.add('visible');
+        setButtonsDisabled(true);
+        try {
+          const data = await api('/save', { driverName });
+          if (data && data.saved) {
+            alert('Saved: ' + data.filename);
+          } else {
+            alert('Save failed.');
+          }
+        } finally {
+          saveSpinner.classList.remove('visible');
+          setButtonsDisabled(false);
         }
       }
 
