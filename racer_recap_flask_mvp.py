@@ -653,7 +653,7 @@ INDEX_HTML = """<!doctype html>
           </div>
 
           <div class="row-buttons">
-            <button id="submit" class="primary">Submit</button>
+            <button id="submit" class="primary">Submit Answer</button>
             <button id="finish">Finish Now</button>
           </div>
         </div>
