@@ -83,6 +83,16 @@ SYSTEM_PROMPT = (
     "Never stack multiple questions. Avoid saying 'great' more than once per interview."
 )
 
+# A few natural ways to preface follow-ups
+FOLLOWUP_PREFIXES = [
+    "As a follow-up,",
+    "Quick follow-up —",
+    "One quick follow-up:",
+    "Brief follow-up:",
+    "Just to stay on that thread —",
+    "Sticking with that for a second —",
+]
+
 FOLLOWUP_ACK_SYSTEM = (
     "You are a TV-style motorsport interviewer ('Pit Lane Pal'). Write ONE brief, natural acknowledgment.\n"
     "Goal: sound like a human bridge into the follow-up (no advice, no preaching).\n"
@@ -202,6 +212,33 @@ def build_interviewer_messages(history: List[Dict[str, str]], stage_idx: int) ->
         {"role": "user", "content": user_instruction}
     ]
 
+
+def _preface_followup(question: str) -> str:
+    """If the model didn't preface with a follow-up cue, add a natural variant."""
+    if not question:
+        return "As a follow-up, could you tell me more about that?"
+
+    q = question.strip()
+    # If it already starts with a follow-up cue, don't double-prefix
+    starts = (
+        "as a follow-up", "as a follow up",
+        "quick follow-up", "quick follow up",
+        "one quick follow-up", "brief follow-up",
+        "just to stay on that thread", "sticking with that for a second",
+    )
+    if any(q.lower().startswith(s) for s in starts):
+        return q
+
+    # Choose a prefix and gently lowercase the first char of the question for flow
+    import random
+    prefix = random.choice(FOLLOWUP_PREFIXES)
+    if q and q[0].isalpha():
+        q = q[0].lower() + q[1:]
+    # Ensure spacing is nice whether prefix ends with comma/colon/em dash
+    if prefix.endswith((",", ":", "—")):
+        return f"{prefix} {q}"
+    return f"{prefix} {q}"
+
 def build_followup_messages(last_question: str, last_answer: str) -> List[Dict[str, str]]:
     ctx = f"Last Q: {last_question}\nLast A: {last_answer}\n"
     user_instruction = (
@@ -283,9 +320,10 @@ def call_interviewer(history: List[Dict[str, str]], stage_idx: int) -> Dict[str,
         return {"ack": "Thanks for sharing.", "next_question": pick_variant(stage_idx)}
 
 def call_followup(last_q: str, last_a: str) -> str:
-    """Return a single follow-up question (string), prefixed with 'As a follow-up,'."""
+    """Return a single follow-up question (string) with a natural preface."""
     if not _model_available():
         return "As a follow-up, what specific detail or feeling stands out from that moment?"
+
     messages = build_followup_messages(last_q, last_a)
     resp = client.chat.completions.create(
         model=OPENAI_MODEL,
@@ -295,11 +333,8 @@ def call_followup(last_q: str, last_a: str) -> str:
     )
     try:
         data = json.loads(resp.choices[0].message.content)
-        follow_q = data.get("next_question", "").strip()
-        if not follow_q.lower().startswith("as a follow-up"):
-            follow_q = f"As a follow-up, {follow_q[0].lower() + follow_q[1:]}" if follow_q else \
-                "As a follow-up, could you tell me more about that?"
-        return follow_q
+        follow_q = (data.get("next_question") or "").strip()
+        return _preface_followup(follow_q)
     except Exception:
         return "As a follow-up, could you tell me more about that?"
 
