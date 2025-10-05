@@ -527,6 +527,32 @@ INDEX_HTML = """<!doctype html>
       }
       .ack { margin: 0; font-size: 16px; line-height: 1.55; }
       .q { margin: 0; font-weight: 600; font-size: 19px; line-height: 1.45; }
+      
+      .header-line{
+  display:flex;
+  align-items:baseline;
+  gap:12px;
+  flex-wrap:wrap;           /* stays on one line when space allows */
+  margin:0 0 2px 0;
+}
+.header-line .title{
+  margin:0;
+  font-size:28px;
+  line-height:1.2;
+}
+.brand{
+  color:var(--muted);
+  font-size:16px;
+  font-weight:500;
+  opacity:.9;
+}
+.tagline{
+  margin:6px 0 0 0;
+  color:var(--muted);
+  font-size:14px;
+  letter-spacing:.2px;
+}
+
 
       textarea {
         width: 100%; min-height: 220px; max-height: 480px; margin-top: 12px; padding: 16px 18px;
@@ -597,8 +623,12 @@ INDEX_HTML = """<!doctype html>
       <div class="card">
         <div class="row">
           <div>
-            <h2>Racer Recap Interview</h2>
-            <p class="muted">An Apexiel, Inc. Prototype.</p>
+            <div class="header-line">
+  <h2 class="title">Racer Recap Interview</h2>
+  <span class="brand">An Apexiel, Inc. Prototype.</span>
+</div>
+<p class="tagline">Every lap has a story—tell yours</p>
+
           </div>
         </div>
 
