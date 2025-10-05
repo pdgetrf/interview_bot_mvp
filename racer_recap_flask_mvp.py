@@ -417,9 +417,15 @@ INDEX_HTML = """<!doctype html>
         color: var(--text);
         cursor: pointer;
         font-size: 15px;
+        transition: opacity 0.2s ease, transform 0.1s ease;
       }
       button.primary { background: var(--accent); border: none; color: #fff; }
-      button:hover { opacity: 0.9; }
+      button:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+      }
 
       .row-buttons {
         display: flex;
@@ -449,9 +455,7 @@ INDEX_HTML = """<!doctype html>
         border-radius: 50%;
         animation: spin 1s linear infinite;
       }
-      @keyframes spin {
-        to { transform: rotate(360deg); }
-      }
+      @keyframes spin { to { transform: rotate(360deg); } }
     </style>
   </head>
   <body>
@@ -511,13 +515,13 @@ INDEX_HTML = """<!doctype html>
         return await res.json();
       }
 
+      const buttons = Array.from(document.querySelectorAll('button'));
       const startBtn = document.getElementById('start');
       const resetBtn = document.getElementById('reset');
       const submitBtn = document.getElementById('submit');
       const finishBtn = document.getElementById('finish');
       const saveBtn = document.getElementById('save');
       const nameEl = document.getElementById('driverName');
-
       const ackEl = document.getElementById('ack');
       const qEl = document.getElementById('question');
       const aEl = document.getElementById('answer');
@@ -526,6 +530,10 @@ INDEX_HTML = """<!doctype html>
       const recapTitle = document.getElementById('recap-title');
       const recapEl = document.getElementById('recap');
       const spinner = document.getElementById('spinner');
+
+      function setButtonsDisabled(disabled) {
+        buttons.forEach(btn => btn.disabled = disabled);
+      }
 
       async function start() {
         const data = await api('/start');
@@ -541,9 +549,8 @@ INDEX_HTML = """<!doctype html>
         const answer = aEl.value.trim();
         if (!answer) return;
         const question = qEl.textContent || '';
-        spinner.classList.add('visible');  // show spinner
-        submitBtn.disabled = true;
-
+        spinner.classList.add('visible');
+        setButtonsDisabled(true);
         try {
           const data = await api('/answer', { answer, question });
           if (data.done) {
@@ -558,15 +565,17 @@ INDEX_HTML = """<!doctype html>
             aEl.focus();
           }
         } finally {
-          spinner.classList.remove('visible'); // hide spinner
-          submitBtn.disabled = false;
+          spinner.classList.remove('visible');
+          setButtonsDisabled(false);
         }
       }
 
       async function finishNow() {
         spinner.classList.add('visible');
+        setButtonsDisabled(true);
         const data = await api('/finish');
         spinner.classList.remove('visible');
+        setButtonsDisabled(false);
         recapTitle.textContent = data.title || 'Race Recap';
         recapEl.textContent = data.recap || '';
         qaBlock.classList.add('hidden');
@@ -597,6 +606,7 @@ INDEX_HTML = """<!doctype html>
   </body>
 </html>
 """
+
 
 # ---------- Routes ----------
 @app.route("/", methods=["GET"])
