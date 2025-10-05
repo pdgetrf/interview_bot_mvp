@@ -25,6 +25,12 @@ except Exception:  # pragma: no cover
 SESSIONS: Dict[str, Dict[str, Any]] = {}
 
 STORYLINE = [
+    {"id": "event", "direction": "Ask which event or race this interview is about. Keep it conversational and warm.",
+     "variants": [
+         "What event or race are you at today?",
+         "Which event is this — and how’s the atmosphere out there?",
+         "Let’s start with the basics — what event are we talking about today?"
+     ]},
     {"id": "intro", "direction": "Ask for a quick intro (name + car). Keep it warm and concise.",
      "variants": [
          "Let’s start with a quick intro — what’s your name and what car did you drive today?",
@@ -61,7 +67,6 @@ STORYLINE = [
          "What will you take from today into your next event?",
          "What’s a lesson from today and a plan you’ll try next time?"
      ]},
-    # NEW: closing tips-for-others stage
     {"id": "tips", "direction": "Ask if they have one tip they’d share with other drivers from this event.",
      "variants": [
          "Before we wrap, is there one tip you’d share with other drivers from today?",
@@ -672,7 +677,7 @@ INDEX_HTML = """<!doctype html>
         const data = await api('/start');
         ackEl.textContent = data.ack || '';
         qEl.textContent = data.question || '';
-        ackLabel.textContent = "Welcome to the interview. I'm your interviewer.";
+        ackLabel.textContent = "Thanks for taking the interview.";
         resetAnswerBox();
         qaBlock.classList.remove('hidden');
         recapBlock.classList.add('hidden');
