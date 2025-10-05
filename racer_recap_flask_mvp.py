@@ -444,7 +444,6 @@ INDEX_HTML = """<!doctype html>
         box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.2);
       }
 
-      /* --- Acknowledgment + Question sections --- */
       #qa-block { margin-top: 28px; }
 
       .ack-box, .question-box {
@@ -471,24 +470,24 @@ INDEX_HTML = """<!doctype html>
       .ack { margin: 0; font-size: 16px; line-height: 1.55; }
       .q { margin: 0; font-weight: 600; font-size: 19px; line-height: 1.45; }
 
-      /* --- Improved textarea for easier typing --- */
+      /* --- Improved textarea --- */
       textarea {
         width: 100%;
-        min-height: 220px;              /* more room to breathe */
-        max-height: 480px;              /* keep it from getting unruly */
+        min-height: 220px;
+        max-height: 480px;
         margin-top: 12px;
-        padding: 16px 18px;             /* roomier padding */
+        padding: 16px 18px;
         background: var(--panel-2);
         color: var(--text);
-        caret-color: var(--accent);     /* easier to track the cursor */
+        caret-color: var(--accent);
         border: 1px solid var(--border);
-        border-radius: 14px;            /* slightly softer corners */
-        font-size: 17px;                /* larger text for readability */
-        line-height: 1.65;              /* comfy line spacing */
+        border-radius: 14px;
+        font-size: 17px;
+        line-height: 1.65;
         letter-spacing: 0.005em;
-        resize: vertical;               /* users can still resize if they want */
+        resize: vertical;
         outline: none;
-        overflow: auto;                 /* shows a scrollbar if content exceeds max-height */
+        overflow: auto;
         box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
       }
       textarea::placeholder {
@@ -529,7 +528,16 @@ INDEX_HTML = """<!doctype html>
       .recap { white-space: pre-wrap; margin-top: 24px; }
       .hidden { display: none; }
 
-      /* --- Spinner --- */
+      /* --- Flash animation: slower and brighter --- */
+      @keyframes uiFlash {
+        0%   { background-color: #1d2126; box-shadow: 0 0 0 0 rgba(30,144,255,0); }
+        10%  { background-color: #275173; box-shadow: 0 0 25px 6px rgba(0,150,255,0.7); }
+        40%  { background-color: #2e5e83; box-shadow: 0 0 35px 10px rgba(0,150,255,0.5); }
+        100% { background-color: #1d2126; box-shadow: 0 0 0 0 rgba(0,140,255,0); }
+      }
+      .ack-box.flash { animation: uiFlash 1.3s ease-out; }
+      .question-box.flash { animation: uiFlash 0.5s ease-out; }
+
       .spinner {
         display: flex;
         justify-content: center;
@@ -562,12 +570,12 @@ INDEX_HTML = """<!doctype html>
         </div>
 
         <div id="qa-block" class="hidden">
-          <div class="ack-box">
-            <div class="ack-label">Welcome to the interview. I'm your interviewer.</div>
+          <div class="ack-box" id="ack-box">
+            <div class="ack-label" id="ack-label">Welcome to the interview. I'm your interviewer.</div>
             <div class="ack" id="ack"></div>
           </div>
 
-          <div class="question-box">
+          <div class="question-box" id="question-box">
             <div class="question-label">Next question</div>
             <div class="q" id="question"></div>
           </div>
@@ -618,6 +626,9 @@ INDEX_HTML = """<!doctype html>
       const ackEl = document.getElementById('ack');
       const qEl = document.getElementById('question');
       const aEl = document.getElementById('answer');
+      const ackBox = document.getElementById('ack-box');
+      const qBox = document.getElementById('question-box');
+      const ackLabel = document.getElementById('ack-label');
       const qaBlock = document.getElementById('qa-block');
       const recapBlock = document.getElementById('recap-block');
       const recapTitle = document.getElementById('recap-title');
@@ -629,7 +640,6 @@ INDEX_HTML = """<!doctype html>
         buttons.forEach(btn => btn.disabled = disabled);
       }
 
-      // Auto-grow the textarea for a comfy typing experience (up to max-height)
       function autosize(el) {
         if (!el) return;
         el.style.height = 'auto';
@@ -641,8 +651,6 @@ INDEX_HTML = """<!doctype html>
         autosize(aEl);
         aEl.focus();
       }
-      // Initialize once DOM is ready (in case of hot reload / quick start)
-      autosize(aEl);
 
       async function start() {
         const data = await api('/start');
@@ -669,6 +677,18 @@ INDEX_HTML = """<!doctype html>
           } else {
             ackEl.textContent = data.ack || '';
             qEl.textContent = data.question || '';
+
+            if (ackLabel && ackLabel.style.display !== 'none') {
+              ackLabel.style.display = 'none';
+            }
+
+            // Trigger flash on ack then question
+            ackBox.classList.remove('flash');
+            qBox.classList.remove('flash');
+            void ackBox.offsetWidth; void qBox.offsetWidth;
+            ackBox.classList.add('flash');
+            setTimeout(() => qBox.classList.add('flash'), 300);
+
             resetAnswerBox();
           }
         } finally {
