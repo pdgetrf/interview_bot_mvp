@@ -5,8 +5,10 @@ from flask import Flask, request, session, jsonify, render_template_string
 from datetime import datetime
 import re
 import pathlib
+from dotenv import load_dotenv
 
 # ---------- Config ----------
+load_dotenv()
 SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
