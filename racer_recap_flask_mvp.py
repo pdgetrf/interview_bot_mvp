@@ -471,23 +471,34 @@ INDEX_HTML = """<!doctype html>
       .ack { margin: 0; font-size: 16px; line-height: 1.55; }
       .q { margin: 0; font-weight: 600; font-size: 19px; line-height: 1.45; }
 
+      /* --- Improved textarea for easier typing --- */
       textarea {
         width: 100%;
-        min-height: 150px;
+        min-height: 220px;              /* more room to breathe */
+        max-height: 480px;              /* keep it from getting unruly */
         margin-top: 12px;
-        padding: 14px;
+        padding: 16px 18px;             /* roomier padding */
         background: var(--panel-2);
         color: var(--text);
+        caret-color: var(--accent);     /* easier to track the cursor */
         border: 1px solid var(--border);
-        border-radius: 12px;
-        line-height: 1.5;
-        resize: vertical;
+        border-radius: 14px;            /* slightly softer corners */
+        font-size: 17px;                /* larger text for readability */
+        line-height: 1.65;              /* comfy line spacing */
+        letter-spacing: 0.005em;
+        resize: vertical;               /* users can still resize if they want */
         outline: none;
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+        overflow: auto;                 /* shows a scrollbar if content exceeds max-height */
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+      }
+      textarea::placeholder {
+        color: color-mix(in oklab, var(--muted) 80%, #fff 20%);
       }
       textarea:focus {
         border-color: var(--accent);
-        box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.2) inset;
+        box-shadow:
+          0 0 0 3px rgba(10, 132, 255, 0.18),
+          inset 0 1px 0 rgba(255,255,255,0.05);
       }
 
       button {
@@ -618,14 +629,28 @@ INDEX_HTML = """<!doctype html>
         buttons.forEach(btn => btn.disabled = disabled);
       }
 
+      // Auto-grow the textarea for a comfy typing experience (up to max-height)
+      function autosize(el) {
+        if (!el) return;
+        el.style.height = 'auto';
+        const max = parseInt(getComputedStyle(el).maxHeight, 10) || 480;
+        el.style.height = Math.min(el.scrollHeight, max) + 'px';
+      }
+      function resetAnswerBox() {
+        aEl.value = '';
+        autosize(aEl);
+        aEl.focus();
+      }
+      // Initialize once DOM is ready (in case of hot reload / quick start)
+      autosize(aEl);
+
       async function start() {
         const data = await api('/start');
         ackEl.textContent = data.ack || '';
         qEl.textContent = data.question || '';
-        aEl.value = '';
+        resetAnswerBox();
         qaBlock.classList.remove('hidden');
         recapBlock.classList.add('hidden');
-        aEl.focus();
       }
 
       async function send() {
@@ -644,8 +669,7 @@ INDEX_HTML = """<!doctype html>
           } else {
             ackEl.textContent = data.ack || '';
             qEl.textContent = data.question || '';
-            aEl.value = '';
-            aEl.focus();
+            resetAnswerBox();
           }
         } finally {
           spinner.classList.remove('visible');
