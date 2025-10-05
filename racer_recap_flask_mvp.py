@@ -65,18 +65,36 @@ STORYLINE = [
 
 # ---------- System Prompts ----------
 SYSTEM_PROMPT = (
-    "You are a fun, supportive post-race interviewer persona called 'Pit Lane Pal'.\n"
-    "Tone: upbeat, witty, concise; light motorsport metaphors; never snarky.\n"
+    "You are a TV-style motorsport interviewer called 'Pit Lane Pal'.\n"
+    "Voice: quick, conversational, trackside reporter; warm but not gushy.\n"
     "Return ONLY JSON with keys: ack, next_question.\n"
-    "- ack: 1–3 short sentences, STATEMENTS ONLY (no question marks). Brief, playful, helpful; do not ask anything here.\n"
+    "- ack: 1–2 short sentences (3 max), STATEMENTS ONLY (no question marks). Speak like a human on the paddock mic.\n"
+    "  * Do NOT coach or give advice; avoid imperatives like 'you should', 'remember to', 'make sure'.\n"
+    "  * Refer to one concrete detail or feeling from the last answer; keep it light and natural.\n"
     "- next_question: EXACTLY ONE question that follows the provided direction and avoids repeating past topics.\n"
     "Never stack multiple questions. Avoid saying 'great' more than once per interview."
 )
 
+FOLLOWUP_ACK_SYSTEM = (
+    "You are a TV-style motorsport interviewer ('Pit Lane Pal'). Write ONE brief, natural acknowledgment.\n"
+    "Goal: sound like a human bridge into the follow-up (no advice, no preaching).\n"
+    "Rules:\n"
+    "- Output JSON only: {\"ack\": \"...\"}\n"
+    "- 1 sentence, ≤ 18 words, STATEMENT only (no question marks), no emojis.\n"
+    "- Refer to one concrete detail or feeling from the driver’s answer.\n"
+    "- Lead naturally toward the upcoming follow-up topic; do NOT restate that question or ask a new one.\n"
+    "- No imperatives or coaching (‘you should’, ‘remember to’, ‘make sure’)."
+)
+
 FOLLOWUP_SYSTEM = (
-    "You are 'Pit Lane Pal', asking a SINGLE follow-up question based ONLY on the user's most recent answer.\n"
-    "Goal: pull one SPECIFIC detail (e.g., a number, section, technique) OR a feeling (e.g., frustration, excitement).\n"
-    "Rules: keep it short (one sentence), no multi-part, no emojis, no repeating earlier questions. Return JSON with key: next_question."
+    "You are 'Pit Lane Pal', a quick, friendly post-race interviewer.\n"
+    "Your job: ask ONE natural follow-up question based ONLY on the driver's most recent answer.\n"
+    "Keep it short, conversational, and specific — like a real pit reporter catching a detail they want more on.\n"
+    "Examples of focus: a moment, technique, number, emotion, or change they mentioned.\n"
+    "Rules:\n"
+    "- Exactly ONE question, no multi-part, no emoji, no exclamation.\n"
+    "- Do not restate or paraphrase the previous question.\n"
+    "- Output JSON only with key: next_question."
 )
 
 RECAP_SYSTEM = (
@@ -123,13 +141,32 @@ def _model_available() -> bool:
 
 
 def _sanitize_ack(text: str) -> str:
-    """Drop any question-like sentences and trim length."""
+    """Make ack feel like a human pit reporter: no questions, no preaching, restrained punctuation."""
     if not text:
         return ""
+    # Remove any sentence containing a question mark
     parts = re.split(r"(?<=[.!?])\s+", text.strip())
     keep = [p for p in parts if "?" not in p]
     cleaned = " ".join(keep).strip()
+
+    # Soften exclamations
+    cleaned = re.sub(r"!+", ".", cleaned)
+
+    # Remove preachy/imperative phrases if they slipped in
+    preachy_patterns = [
+        r"\byou should\b.*?(?:\.|$)",
+        r"\bremember to\b.*?(?:\.|$)",
+        r"\bmake sure\b.*?(?:\.|$)",
+        r"\bbe sure to\b.*?(?:\.|$)",
+        r"\bpro tip\b.*?(?:\.|$)"
+    ]
+    for pat in preachy_patterns:
+        cleaned = re.sub(pat, "", cleaned, flags=re.IGNORECASE).strip()
+
+    # Collapse extra spaces
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
     return cleaned[:280]
+
 
 def pick_variant(stage_idx: int) -> str:
     import random
@@ -146,10 +183,12 @@ def build_interviewer_messages(history: List[Dict[str, str]], stage_idx: int) ->
     user_instruction = (
             "Context transcript so far (Q and A):\n" + transcript_text + "\n\n"
                                                                          f"Next step direction: {direction}\n"
-                                                                         "Write an ack that is statement-only (no question marks) and adds one helpful comment.\n"
+                                                                         "Write an ack that is statement-only (no question marks), 1–2 short sentences, reporter-style.\n"
+                                                                         "Do NOT give advice or instructions; avoid imperatives like 'you should', 'remember to', 'make sure'.\n"
                                                                          "Then produce exactly one next question per the direction.\n"
                                                                          "Output JSON with keys: ack, next_question."
     )
+
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user_instruction}
@@ -294,7 +333,7 @@ INDEX_HTML = """<!doctype html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Racer Recap Interview (MVP)</title>
+    <title>Racer Recap Interview (Apexiel Research)</title>
     <style>
       :root {
         --bg: #101214;
@@ -463,7 +502,7 @@ INDEX_HTML = """<!doctype html>
       <div class="card">
         <div class="row">
           <div>
-            <h2>Racer Recap Interview (MVP)</h2>
+            <h2>Racer Recap Interview (Apexiel Research)</h2>
             <p class="muted">Answer a few guided questions to generate your recap. Text-only MVP.</p>
           </div>
           <input id="driverName" type="text" placeholder="Your name (optional)" />
@@ -495,7 +534,7 @@ INDEX_HTML = """<!doctype html>
           <div id="recap" class="recap"></div>
           <div class="spinner" id="save-spinner"><div></div></div>
           <div class="row-buttons">
-            <button id="save">Save Markdown</button>
+            <button id="save">Save Interview</button>
           </div>
         </div>
 
