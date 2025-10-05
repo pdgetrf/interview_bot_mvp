@@ -430,6 +430,28 @@ INDEX_HTML = """<!doctype html>
 
       .recap { white-space: pre-wrap; margin-top: 24px; }
       .hidden { display: none; }
+
+      /* --- Spinner --- */
+      .spinner {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-top: 20px;
+        height: 40px;
+        visibility: hidden;
+      }
+      .spinner.visible { visibility: visible; }
+      .spinner div {
+        width: 32px;
+        height: 32px;
+        border: 3px solid var(--accent);
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
     </style>
   </head>
   <body>
@@ -456,6 +478,8 @@ INDEX_HTML = """<!doctype html>
 
           <textarea id="answer" placeholder="Type your answer..."></textarea>
 
+          <div class="spinner" id="spinner"><div></div></div>
+
           <div class="row-buttons">
             <button id="submit" class="primary">Send</button>
             <button id="finish">Finish Now</button>
@@ -479,7 +503,11 @@ INDEX_HTML = """<!doctype html>
 
     <script>
       async function api(path, body) {
-        const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+        const res = await fetch(path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body || {})
+        });
         return await res.json();
       }
 
@@ -497,6 +525,7 @@ INDEX_HTML = """<!doctype html>
       const recapBlock = document.getElementById('recap-block');
       const recapTitle = document.getElementById('recap-title');
       const recapEl = document.getElementById('recap');
+      const spinner = document.getElementById('spinner');
 
       async function start() {
         const data = await api('/start');
@@ -512,22 +541,32 @@ INDEX_HTML = """<!doctype html>
         const answer = aEl.value.trim();
         if (!answer) return;
         const question = qEl.textContent || '';
-        const data = await api('/answer', { answer, question });
-        if (data.done) {
-          recapTitle.textContent = data.title || 'Race Recap';
-          recapEl.textContent = data.recap || '';
-          qaBlock.classList.add('hidden');
-          recapBlock.classList.remove('hidden');
-        } else {
-          ackEl.textContent = data.ack || '';
-          qEl.textContent = data.question || '';
-          aEl.value = '';
-          aEl.focus();
+        spinner.classList.add('visible');  // show spinner
+        submitBtn.disabled = true;
+
+        try {
+          const data = await api('/answer', { answer, question });
+          if (data.done) {
+            recapTitle.textContent = data.title || 'Race Recap';
+            recapEl.textContent = data.recap || '';
+            qaBlock.classList.add('hidden');
+            recapBlock.classList.remove('hidden');
+          } else {
+            ackEl.textContent = data.ack || '';
+            qEl.textContent = data.question || '';
+            aEl.value = '';
+            aEl.focus();
+          }
+        } finally {
+          spinner.classList.remove('visible'); // hide spinner
+          submitBtn.disabled = false;
         }
       }
 
       async function finishNow() {
+        spinner.classList.add('visible');
         const data = await api('/finish');
+        spinner.classList.remove('visible');
         recapTitle.textContent = data.title || 'Race Recap';
         recapEl.textContent = data.recap || '';
         qaBlock.classList.add('hidden');
