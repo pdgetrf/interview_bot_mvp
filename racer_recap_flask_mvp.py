@@ -296,53 +296,184 @@ INDEX_HTML = """<!doctype html>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Racer Recap Interview (MVP)</title>
     <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; background: #121212; color: #eee; }
-      .card { max-width: 760px; margin: 0 auto; border: 1px solid #333; border-radius: 12px; padding: 16px; background: #1e1e1e; }
-      .row { display: flex; gap: 8px; margin-top: 12px; }
-      .q { font-weight: 600; margin-top: 16px; }
-      .ack { color: #bbb; margin: 8px 0; min-height: 20px; }
-      textarea { width: 100%; min-height: 84px; padding: 8px; background: #222; color: #eee; border: 1px solid #444; border-radius: 6px; }
-      button { padding: 10px 16px; border-radius: 10px; border: 1px solid #555; background: #333; color: #eee; cursor: pointer; }
-      button.primary { background: #007acc; border: none; color: #fff; }
-      .muted { color: #888; font-size: 14px; }
+      :root {
+        --bg: #101214;
+        --panel: #1b1f24;
+        --panel-2: #22272b;
+        --text: #e6e6e6;
+        --muted: #9aa4ad;
+        --border: #2b333a;
+        --accent: #0a84ff;
+        --radius: 14px;
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 16px/1.55 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif;
+      }
+
+      .wrap {
+        min-height: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        padding: 48px 20px;
+      }
+
+      .card {
+        width: 100%;
+        max-width: 920px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 32px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+      }
+
+      .row {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      h2 {
+        margin: 0 0 4px 0;
+        font-size: 28px;
+        line-height: 1.2;
+      }
+
+      .muted { color: var(--muted); font-size: 14px; }
+
+      input[type=text] {
+        width: 260px;
+        background: var(--panel-2);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px 12px;
+        outline: none;
+      }
+      input[type=text]:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.2);
+      }
+
+      /* --- Acknowledgment + Question sections --- */
+      #qa-block { margin-top: 28px; }
+
+      .ack-box, .question-box {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px 18px;
+        background: var(--panel-2);
+        margin: 10px 0 16px 0;
+      }
+
+      .ack-box {
+        background: #181b1f;
+        color: var(--muted);
+        font-style: italic;
+      }
+
+      .ack-label, .question-label {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+
+      .ack { margin: 0; font-size: 16px; line-height: 1.55; }
+      .q { margin: 0; font-weight: 600; font-size: 19px; line-height: 1.45; }
+
+      textarea {
+        width: 100%;
+        min-height: 150px;
+        margin-top: 12px;
+        padding: 14px;
+        background: var(--panel-2);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        line-height: 1.5;
+        resize: vertical;
+        outline: none;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+      }
+      textarea:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.2) inset;
+      }
+
+      button {
+        padding: 10px 16px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: #333;
+        color: var(--text);
+        cursor: pointer;
+        font-size: 15px;
+      }
+      button.primary { background: var(--accent); border: none; color: #fff; }
+      button:hover { opacity: 0.9; }
+
+      .row-buttons {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 16px;
+      }
+
+      .recap { white-space: pre-wrap; margin-top: 24px; }
       .hidden { display: none; }
-      .recap { white-space: pre-wrap; }
-      input[type=text] { background:#222; color:#eee; border:1px solid #444; border-radius:6px; padding:8px; }
     </style>
   </head>
   <body>
-    <div class="card">
-      <div class="row" style="justify-content: space-between; align-items:center;">
-        <div>
-          <h2 style="margin:0;">Racer Recap Interview (MVP)</h2>
-          <p class="muted" style="margin-top:4px;">Answer a few guided questions to generate your recap. Text-only MVP.</p>
-        </div>
-        <div style="min-width:260px; text-align:right;">
-          <input id="driverName" type="text" placeholder="Your name (optional)" style="width:240px;" />
-        </div>
-      </div>
-
-      <div id="qa-block" class="hidden">
-        <div class="ack" id="ack"></div>
-        <div class="q" id="question"></div>
-        <textarea id="answer" placeholder="Type your answer..."></textarea>
+    <div class="wrap">
+      <div class="card">
         <div class="row">
-          <button id="submit" class="primary">Send</button>
-          <button id="finish">Finish Now</button>
+          <div>
+            <h2>Racer Recap Interview (MVP)</h2>
+            <p class="muted">Answer a few guided questions to generate your recap. Text-only MVP.</p>
+          </div>
+          <input id="driverName" type="text" placeholder="Your name (optional)" />
         </div>
-      </div>
 
-      <div id="recap-block" class="hidden">
-        <h3 id="recap-title"></h3>
-        <div id="recap" class="recap"></div>
-        <div class="row" style="margin-top:12px;">
-          <button id="save">Save Markdown</button>
+        <div id="qa-block" class="hidden">
+          <div class="ack-box">
+            <div class="ack-label">Interviewer’s note</div>
+            <div class="ack" id="ack"></div>
+          </div>
+
+          <div class="question-box">
+            <div class="question-label">Next question</div>
+            <div class="q" id="question"></div>
+          </div>
+
+          <textarea id="answer" placeholder="Type your answer..."></textarea>
+
+          <div class="row-buttons">
+            <button id="submit" class="primary">Send</button>
+            <button id="finish">Finish Now</button>
+          </div>
         </div>
-      </div>
 
-      <div class="row">
-        <button id="start" class="primary">Start Interview</button>
-        <button id="reset">Reset</button>
+        <div id="recap-block" class="hidden">
+          <h3 id="recap-title"></h3>
+          <div id="recap" class="recap"></div>
+          <div class="row-buttons">
+            <button id="save">Save Markdown</button>
+          </div>
+        </div>
+
+        <div class="row-buttons" style="margin-top:28px;">
+          <button id="start" class="primary">Start Interview</button>
+          <button id="reset">Reset</button>
+        </div>
       </div>
     </div>
 
