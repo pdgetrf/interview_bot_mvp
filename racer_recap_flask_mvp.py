@@ -69,9 +69,15 @@ STORYLINE = [
      ]},
     {"id": "tips", "direction": "Ask if they have one tip they’d share with other drivers from this event.",
      "variants": [
-         "Before we wrap, is there one tip you’d share with other drivers from today?",
+         "Is there one tip you’d share with other drivers from today?",
          "Got any quick tip you’d pass on to someone running this course tomorrow?",
          "What’s one practical tip you’d give others after today’s event?"
+     ]},
+    {"id": "closing", "direction": "Offer an open floor for anything else they want to add.",
+     "variants": [
+         "Anything else you want to share before we wrap up the interview?",
+         "Any shoutouts or final thoughts you want to add?",
+         "Before we close, is there anything we didn’t cover that you’d like to mention?"
      ]}
 ]
 
@@ -88,7 +94,14 @@ SYSTEM_PROMPT = (
     "Never stack multiple questions. Avoid saying 'great' more than once per interview."
 )
 
-# A few natural ways to preface follow-ups
+# Extract a person's name from text
+EXTRACT_NAME_SYSTEM = (
+    "You are an information extractor. From the user's text, extract the speaker's personal name.\n"
+    "Return ONLY JSON: {\"name\": \"<best guess>\"}\n"
+    "- Prefer the driver/speaker's name if multiple are mentioned.\n"
+    "- Keep the name short (1–3 words). Title case it. No extra text."
+)
+
 FOLLOWUP_PREFIXES = [
     "As a follow-up,",
     "Quick follow-up —",
@@ -112,12 +125,7 @@ FOLLOWUP_ACK_SYSTEM = (
 FOLLOWUP_SYSTEM = (
     "You are 'Pit Lane Pal', a quick, friendly post-race interviewer.\n"
     "Your job: ask ONE natural follow-up question based ONLY on the driver's most recent answer.\n"
-    "Keep it short, conversational, and specific — like a real pit reporter catching a detail they want more on.\n"
-    "Examples of focus: a moment, technique, number, emotion, or change they mentioned.\n"
-    "Rules:\n"
-    "- Exactly ONE question, no multi-part, no emoji, no exclamation.\n"
-    "- Do not restate or paraphrase the previous question.\n"
-    "- Output JSON only with key: next_question."
+    "Keep it short, conversational, and specific — like a real pit reporter."
 )
 
 RECAP_SYSTEM = (
@@ -135,7 +143,7 @@ RECAP_SYSTEM = (
     "  4) Performance snapshot: at least one metric if present + how it felt.\n"
     "  5) Takeaway + next step: one clear lesson and plan.\n"
     "Close with a single reflective line.\n"
-    "Return ONLY JSON with keys: title, recap. Title <= 60 chars."
+    "Return ONLY JSON with keys: title, recap. Title ≤ 60 chars."
 )
 
 FOLLOWUP_DECISION_SYSTEM = (
@@ -146,16 +154,9 @@ FOLLOWUP_DECISION_SYSTEM = (
     "- Return false for simple facts (e.g., name, car model) or short pleasantries."
 )
 
-FOLLOWUP_ACK_SYSTEM = (
+FOLLOWUP_ACK_SYSTEM_2 = (
     "You are 'Pit Lane Pal'. Write ONE brief, warm acknowledgment reacting to the driver's last answer.\n"
-    "Goal: make it feel like a human bridge into the next follow-up question.\n"
-    "Strict rules:\n"
-    "- Output JSON only: {\"ack\": \"...\"}\n"
-    "- 1 sentence, ≤ 18 words, no emojis, STATEMENT only (no question marks).\n"
-    "- Reference one concrete detail or feeling from the driver's answer.\n"
-    "- Lead naturally into the upcoming follow-up topic; do NOT repeat that question or ask a new one.\n"
-    "- You MAY include a short exact quote (3–6 words) if it fits; never cut words mid-quote.\n"
-    "- Avoid generic phrases like 'Got it' or 'Thanks for sharing'."
+    "Output JSON only: {\"ack\": \"...\"} (≤18 words, statement only)."
 )
 
 # ---------- Helpers ----------
@@ -164,18 +165,12 @@ def _model_available() -> bool:
 
 
 def _sanitize_ack(text: str) -> str:
-    """Make ack feel like a human pit reporter: no questions, no preaching, restrained punctuation."""
     if not text:
         return ""
-    # Remove any sentence containing a question mark
     parts = re.split(r"(?<=[.!?])\s+", text.strip())
     keep = [p for p in parts if "?" not in p]
     cleaned = " ".join(keep).strip()
-
-    # Soften exclamations
     cleaned = re.sub(r"!+", ".", cleaned)
-
-    # Remove preachy/imperative phrases if they slipped in
     preachy_patterns = [
         r"\byou should\b.*?(?:\.|$)",
         r"\bremember to\b.*?(?:\.|$)",
@@ -185,10 +180,44 @@ def _sanitize_ack(text: str) -> str:
     ]
     for pat in preachy_patterns:
         cleaned = re.sub(pat, "", cleaned, flags=re.IGNORECASE).strip()
-
-    # Collapse extra spaces
     cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
     return cleaned[:280]
+
+
+def _regex_name_guess(text: str) -> str:
+    # Very basic heuristics if LLM isn't available
+    m = re.search(r"(?:my name is|i am|i'm)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})", text, re.IGNORECASE)
+    if m:
+        return m.group(1).strip()
+    # Single capitalized word near start
+    m2 = re.search(r"\b([A-Z][a-z]{2,})\b", text)
+    return m2.group(1).strip() if m2 else ""
+
+
+def extract_driver_name(answer_text: str) -> str:
+    """Try LLM first; fallback to regex if unavailable or errors."""
+    if not answer_text:
+        return ""
+    if not _model_available():
+        return _regex_name_guess(answer_text)
+
+    try:
+        resp = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": EXTRACT_NAME_SYSTEM},
+                {"role": "user", "content": f"Text:\n{answer_text}\n\nReturn JSON with the name only."}
+            ],
+            temperature=0,
+            response_format={"type": "json_object"}
+        )
+        data = json.loads(resp.choices[0].message.content)
+        name = (data.get("name") or "").strip()
+        # quick cleanse
+        name = re.sub(r"[^A-Za-z \-']", "", name).strip()
+        return name
+    except Exception:
+        return _regex_name_guess(answer_text)
 
 
 def pick_variant(stage_idx: int) -> str:
@@ -201,7 +230,7 @@ def build_interviewer_messages(history: List[Dict[str, str]], stage_idx: int) ->
     for turn in history:
         transcript.append(f"Q: {turn['q']}")
         transcript.append(f"A: {turn['a']}")
-    transcript_text = "\n".join(transcript[-12:])  # last few lines
+    transcript_text = "\n".join(transcript[-12:])
 
     user_instruction = (
             "Context transcript so far (Q and A):\n" + transcript_text + "\n\n"
@@ -219,12 +248,9 @@ def build_interviewer_messages(history: List[Dict[str, str]], stage_idx: int) ->
 
 
 def _preface_followup(question: str) -> str:
-    """If the model didn't preface with a follow-up cue, add a natural variant."""
     if not question:
         return "As a follow-up, could you tell me more about that?"
-
     q = question.strip()
-    # If it already starts with a follow-up cue, don't double-prefix
     starts = (
         "as a follow-up", "as a follow up",
         "quick follow-up", "quick follow up",
@@ -233,15 +259,10 @@ def _preface_followup(question: str) -> str:
     )
     if any(q.lower().startswith(s) for s in starts):
         return q
-
-    # Choose a prefix and gently lowercase the first char of the question for flow
     import random
     prefix = random.choice(FOLLOWUP_PREFIXES)
     if q and q[0].isalpha():
         q = q[0].lower() + q[1:]
-    # Ensure spacing is nice whether prefix ends with comma/colon/em dash
-    if prefix.endswith((",", ":", "—")):
-        return f"{prefix} {q}"
     return f"{prefix} {q}"
 
 def build_followup_messages(last_question: str, last_answer: str) -> List[Dict[str, str]]:
@@ -257,7 +278,6 @@ def build_followup_messages(last_question: str, last_answer: str) -> List[Dict[s
     ]
 
 def call_followup_ack(answer_text: str, upcoming_question: str) -> str:
-    """Generate a short, human acknowledgment line that bridges into the follow-up."""
     if not _model_available():
         core = " ".join(answer_text.strip().split())[:60]
         return _sanitize_ack(f"That part about {core} has me curious.")
@@ -288,7 +308,6 @@ def call_followup_ack(answer_text: str, upcoming_question: str) -> str:
         return _sanitize_ack(f"That note about {snippet} has me interested.")
 
 def should_follow_up(answer_text: str) -> bool:
-    """Use OpenAI to semantically decide if a follow-up is warranted."""
     if not _model_available():
         return len(answer_text.strip()) > 40
     messages = [
@@ -325,10 +344,8 @@ def call_interviewer(history: List[Dict[str, str]], stage_idx: int) -> Dict[str,
         return {"ack": "Thanks for sharing.", "next_question": pick_variant(stage_idx)}
 
 def call_followup(last_q: str, last_a: str) -> str:
-    """Return a single follow-up question (string) with a natural preface."""
     if not _model_available():
         return "As a follow-up, what specific detail or feeling stands out from that moment?"
-
     messages = build_followup_messages(last_q, last_a)
     resp = client.chat.completions.create(
         model=OPENAI_MODEL,
@@ -381,7 +398,7 @@ INDEX_HTML = """<!doctype html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Racer Recap Interview (Apexiel Research)</title>
+    <title>Racer Recap Interview</title>
     <style>
       :root {
         --bg: #101214;
@@ -401,15 +418,7 @@ INDEX_HTML = """<!doctype html>
         color: var(--text);
         font: 16px/1.55 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif;
       }
-
-      .wrap {
-        min-height: 100%;
-        display: flex;
-        justify-content: center;
-        align-items: flex-start;
-        padding: 48px 20px;
-      }
-
+      .wrap { min-height: 100%; display: flex; justify-content: center; align-items: flex-start; padding: 48px 20px; }
       .card {
         width: 100%;
         max-width: 920px;
@@ -419,35 +428,9 @@ INDEX_HTML = """<!doctype html>
         padding: 32px;
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
       }
-
-      .row {
-        display: flex;
-        gap: 16px;
-        align-items: center;
-        justify-content: space-between;
-      }
-
-      h2 {
-        margin: 0 0 4px 0;
-        font-size: 28px;
-        line-height: 1.2;
-      }
-
+      .row { display: flex; gap: 16px; align-items: center; justify-content: space-between; }
+      h2 { margin: 0 0 4px 0; font-size: 28px; line-height: 1.2; }
       .muted { color: var(--muted); font-size: 14px; }
-
-      input[type=text] {
-        width: 260px;
-        background: var(--panel-2);
-        color: var(--text);
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        padding: 10px 12px;
-        outline: none;
-      }
-      input[type=text]:focus {
-        border-color: var(--accent);
-        box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.2);
-      }
 
       #qa-block { margin-top: 28px; }
 
@@ -460,69 +443,34 @@ INDEX_HTML = """<!doctype html>
         position: relative;
         transition: background-color 0.3s ease;
       }
-
       .ack-box { background: #1d2126; color: var(--text); }
 
       .ack-label, .question-label {
-        font-size: 12px;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        color: var(--muted);
-        margin-bottom: 6px;
+        font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;
+        color: var(--muted); margin-bottom: 6px;
       }
-
       .ack { margin: 0; font-size: 16px; line-height: 1.55; }
       .q { margin: 0; font-weight: 600; font-size: 19px; line-height: 1.45; }
 
       textarea {
-        width: 100%;
-        min-height: 220px;
-        max-height: 480px;
-        margin-top: 12px;
-        padding: 16px 18px;
-        background: var(--panel-2);
-        color: var(--text);
-        caret-color: var(--accent);
-        border: 1px solid var(--border);
-        border-radius: 14px;
-        font-size: 17px;
-        line-height: 1.65;
-        resize: vertical;
-        outline: none;
-        overflow: auto;
+        width: 100%; min-height: 220px; max-height: 480px; margin-top: 12px; padding: 16px 18px;
+        background: var(--panel-2); color: var(--text); caret-color: var(--accent);
+        border: 1px solid var(--border); border-radius: 14px; font-size: 17px; line-height: 1.65;
+        resize: vertical; outline: none; overflow: auto;
       }
-
       textarea::placeholder { color: color-mix(in oklab, var(--muted) 80%, #fff 20%); }
-      textarea:focus {
-        border-color: var(--accent);
-        box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.18);
-      }
+      textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.18); }
 
       @keyframes uiFlash {
         0% { background-color: inherit; box-shadow: inset 0 0 0 0 rgba(0,160,255,0); }
-        25% {
-          background-color: #2b4256;
-          box-shadow: inset 0 0 8px 2px rgba(0,160,255,0.16), inset 0 0 16px 4px rgba(0,180,255,0.08);
-        }
-        60% {
-          background-color: #253a4d;
-          box-shadow: inset 0 0 10px 3px rgba(0,160,255,0.10), inset 0 0 18px 6px rgba(0,180,255,0.06);
-        }
+        25% { background-color: #2b4256; box-shadow: inset 0 0 8px 2px rgba(0,160,255,0.16), inset 0 0 16px 4px rgba(0,180,255,0.08); }
+        60% { background-color: #253a4d; box-shadow: inset 0 0 10px 3px rgba(0,160,255,0.10), inset 0 0 18px 6px rgba(0,180,255,0.06); }
         100% { background-color: inherit; box-shadow: inset 0 0 0 0 rgba(0,160,255,0); }
       }
       .ack-box.flash { animation: uiFlash 0.9s ease-out; }
       .question-box.flash { animation: uiFlash 0.9s ease-out; }
 
-      button {
-        padding: 10px 16px;
-        border-radius: 10px;
-        border: 1px solid var(--border);
-        background: #333;
-        color: var(--text);
-        cursor: pointer;
-        font-size: 15px;
-        transition: opacity 0.2s ease, transform 0.1s ease;
-      }
+      button { padding: 10px 16px; border-radius: 10px; border: 1px solid var(--border); background: #333; color: var(--text); cursor: pointer; font-size: 15px; transition: opacity 0.2s ease, transform 0.1s ease; }
       button.primary { background: var(--accent); border: none; color: #fff; }
       button:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
       button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
@@ -532,25 +480,15 @@ INDEX_HTML = """<!doctype html>
       .recap { white-space: pre-wrap; margin-top: 24px; }
       .hidden { display: none; }
 
-      /* --- Updated Spinner --- */
+      /* Spinner with tiny ack text */
       .spinner {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-top: 20px;
-        height: 40px;
-        visibility: hidden;
-        color: var(--muted);
-        font-size: 14px;
+        display: flex; align-items: center; gap: 10px; margin-top: 20px; height: 40px;
+        visibility: hidden; color: var(--muted); font-size: 14px;
       }
       .spinner.visible { visibility: visible; }
       .spinner .dot {
-        width: 32px;
-        height: 32px;
-        border: 3px solid var(--accent);
-        border-top-color: transparent;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
+        width: 32px; height: 32px; border: 3px solid var(--accent); border-top-color: transparent;
+        border-radius: 50%; animation: spin 1s linear infinite;
       }
       @keyframes spin { to { transform: rotate(360deg); } }
     </style>
@@ -561,9 +499,8 @@ INDEX_HTML = """<!doctype html>
         <div class="row">
           <div>
             <h2>Racer Recap Interview</h2>
-            <p class="muted">An APEXIEL Prototype.</p>
+            <p class="muted">An Apexiel, Inc. Prototype.</p>
           </div>
-          <input id="driverName" type="text" placeholder="Your name (optional)" />
         </div>
 
         <div id="qa-block" class="hidden">
@@ -585,7 +522,7 @@ INDEX_HTML = """<!doctype html>
           </div>
 
           <div class="row-buttons">
-            <button id="submit" class="primary">Send</button>
+            <button id="submit" class="primary">Submit</button>
             <button id="finish">Finish Now</button>
           </div>
         </div>
@@ -624,7 +561,6 @@ INDEX_HTML = """<!doctype html>
       const submitBtn = document.getElementById('submit');
       const finishBtn = document.getElementById('finish');
       const saveBtn = document.getElementById('save');
-      const nameEl = document.getElementById('driverName');
       const ackEl = document.getElementById('ack');
       const ackLabel = document.getElementById('ack-label');
       const qEl = document.getElementById('question');
@@ -730,11 +666,10 @@ INDEX_HTML = """<!doctype html>
       }
 
       async function saveNow() {
-        const driverName = (nameEl && nameEl.value) ? nameEl.value : '';
         saveSpinner.classList.add('visible');
         setButtonsDisabled(true);
         try {
-          const data = await api('/save', { driverName });
+          const data = await api('/save', {});
           if (data && data.saved) {
             alert('Saved: ' + data.filename);
           } else {
@@ -753,8 +688,8 @@ INDEX_HTML = """<!doctype html>
       if (saveBtn) saveBtn.onclick = saveNow;
     </script>
   </body>
-</html>"""
-
+</html>
+"""
 
 # ---------- Routes ----------
 @app.route("/", methods=["GET"])
@@ -770,7 +705,7 @@ def get_sid() -> str:
 def ensure_state() -> Dict[str, Any]:
     sid = get_sid()
     if sid not in SESSIONS:
-        SESSIONS[sid] = {"stage": 0, "history": [], "followup_pending": False}
+        SESSIONS[sid] = {"stage": 0, "history": [], "followup_pending": False, "driver_name": ""}
     return SESSIONS[sid]
 
 @app.route("/start", methods=["POST"])
@@ -779,6 +714,7 @@ def start():
     state["stage"] = 0
     state["history"] = []
     state["followup_pending"] = False
+    state["driver_name"] = ""
     q = pick_variant(0)
     return jsonify({"ack": "", "question": q, "stage": state["stage"]})
 
@@ -792,11 +728,20 @@ def answer():
     stage = state.get("stage", 0)
     followup_pending = state.get("followup_pending", False)
 
+    allow_followup = stage < (len(STORYLINE) - 3)
+
+
     # Record the Q&A we just asked/answered
     last_q = shown_question or (pick_variant(stage) if stage >= 0 else "")
     if stage < len(STORYLINE) and not last_q:
         last_q = STORYLINE[stage]["variants"][0]
     state["history"].append({"q": last_q, "a": user_answer})
+
+    # If this was the intro (name) stage, extract and store driver name
+    if 0 <= stage < len(STORYLINE) and STORYLINE[stage]["id"] == "intro" and not state.get("driver_name"):
+        name = extract_driver_name(user_answer)
+        if name:
+            state["driver_name"] = name
 
     # Case 1: replying to a follow-up -> advance storyline
     if followup_pending:
@@ -817,7 +762,7 @@ def answer():
         })
 
     # Case 2: decide semantically whether to follow up
-    if should_follow_up(user_answer):
+    if allow_followup and should_follow_up(user_answer):
         follow_q = call_followup(last_q, user_answer)
         state["followup_pending"] = True
         ack_line = call_followup_ack(user_answer, follow_q)
@@ -853,6 +798,21 @@ def finish_now():
     state["followup_pending"] = False
     return jsonify({"done": True, **recap})
 
+
+def _fallback_name_from_history(history: List[Dict[str, str]]) -> str:
+    # Try to find the intro answer and extract from it
+    for turn in history:
+        if re.search(r"\bname\b", (turn.get("q") or ""), re.IGNORECASE):
+            guess = extract_driver_name(turn.get("a", ""))
+            if guess:
+                return guess
+    # Otherwise attempt on first 2 answers
+    for turn in history[:2]:
+        guess = extract_driver_name(turn.get("a", ""))
+        if guess:
+            return guess
+    return ""
+
 @app.route("/reset", methods=["POST"])
 def reset():
     sid = get_sid()
@@ -862,12 +822,10 @@ def reset():
 @app.route("/save", methods=["POST"])
 def save_markdown():
     """Save the current interview (Q&A + recap) to a markdown file."""
-    payload = request.get_json(force=True) or {}
-    driver_name = (payload.get("driverName") or "").strip()
-    safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", driver_name) or "unknown"
-
     state = ensure_state()
     history = state.get("history", [])
+    driver_name = state.get("driver_name") or _fallback_name_from_history(history)
+    safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", driver_name) or "unknown"
 
     recap = call_recap(history)
     title = recap.get("title", "Race Recap")
@@ -903,7 +861,6 @@ def save_markdown():
     path.write_text(md, encoding='utf-8')
 
     return jsonify({"saved": True, "filename": str(filename)})
-
 
 # Optional: quiet the favicon 404 in dev
 @app.route("/favicon.ico")
