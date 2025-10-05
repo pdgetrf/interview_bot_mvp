@@ -60,13 +60,21 @@ STORYLINE = [
          "What’s something you learned from today, and what’s your goal for the next race?",
          "What will you take from today into your next event?",
          "What’s a lesson from today and a plan you’ll try next time?"
+     ]},
+    # NEW: closing tips-for-others stage
+    {"id": "tips", "direction": "Ask if they have one tip they’d share with other drivers from this event.",
+     "variants": [
+         "Before we wrap, is there one tip you’d share with other drivers from today?",
+         "Got any quick tip you’d pass on to someone running this course tomorrow?",
+         "What’s one practical tip you’d give others after today’s event?"
      ]}
 ]
 
 # ---------- System Prompts ----------
 SYSTEM_PROMPT = (
-    "You are a TV-style motorsport interviewer called 'Pit Lane Pal'.\n"
-    "Voice: quick, conversational, trackside reporter; warm but not gushy.\n"
+    "You are a TV-style motorsport interviewer called 'Blake'.\n"
+    "Voice: first-person, conversational, natural — like chatting trackside right after the run.\n"
+    "Speak directly to the driver (use 'I' and 'you'); never talk about them in third person.\n"
     "Return ONLY JSON with keys: ack, next_question.\n"
     "- ack: 1–2 short sentences (3 max), STATEMENTS ONLY (no question marks). Speak like a human on the paddock mic.\n"
     "  * Do NOT coach or give advice; avoid imperatives like 'you should', 'remember to', 'make sure'.\n"
@@ -413,9 +421,8 @@ INDEX_HTML = """<!doctype html>
       }
 
       .ack-box {
-        background: #181b1f;
-        color: var(--muted);
-        font-style: italic;
+        background: #1d2126;
+        color: var(--text);
       }
 
       .ack-label, .question-label {
@@ -510,7 +517,7 @@ INDEX_HTML = """<!doctype html>
 
         <div id="qa-block" class="hidden">
           <div class="ack-box">
-            <div class="ack-label">Interviewer’s note</div>
+            <div class="ack-label">Welcome to the interview. I'm your interviewer.</div>
             <div class="ack" id="ack"></div>
           </div>
 
