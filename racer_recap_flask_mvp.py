@@ -25,60 +25,87 @@ except Exception:  # pragma: no cover
 SESSIONS: Dict[str, Dict[str, Any]] = {}
 
 STORYLINE = [
-    {"id": "event", "direction": "Ask which event or race this interview is about. Keep it conversational and warm.",
-     "variants": [
-         "What event or race are you at today?",
-         "Which event is this — and how’s the atmosphere out there?",
-         "Let’s start with the basics — what event are we talking about today?"
-     ]},
-    {"id": "intro", "direction": "Ask for a quick intro (name + car). Keep it warm and concise.",
-     "variants": [
-         "Let’s start with a quick intro — what’s your name and what car did you drive today?",
-         "Kick us off with your name and the car you ran in today’s event.",
-         "Before we dive in, tell me your name and the car you brought to the race."
-     ]},
-    {"id": "summary", "direction": "Get a short overall summary of how the race went.",
-     "variants": [
-         "In a sentence or two, how did the race go overall?",
-         "Give me a quick overview — how would you sum up today’s race?",
-         "Big picture: how did things go out there today?"
-     ]},
-    {"id": "highlight", "direction": "Elicit the favorite/exciting moment; ask for a little detail.",
-     "variants": [
-         "What was the most exciting moment for you today? What made it stand out?",
-         "Tell me about your favorite moment of the day — what happened?",
-         "Pick a highlight — what was the best moment out there and why?"
-     ]},
-    {"id": "performance", "direction": "Reflect on results/timing and immediate feelings + a takeaway.",
-     "variants": [
-         "How did you feel about your results or timing today, and what’s one takeaway?",
-         "Looking at your times/results, how do you feel — and what did you learn?",
-         "Results-wise, how did it go, and what’s something you’ll carry forward?"
-     ]},
-    {"id": "challenge", "direction": "Surface the hardest moment; ask how they handled it.",
-     "variants": [
-         "What was the toughest part of the race, and how did you handle it?",
-         "Tell me about a hard moment out there — what did you do to get through it?",
-         "What challenged you most today, and how did you respond?"
-     ]},
-    {"id": "wrap", "direction": "End positive: lesson + next step/goal.",
-     "variants": [
-         "What’s something you learned from today, and what’s your goal for the next race?",
-         "What will you take from today into your next event?",
-         "What’s a lesson from today and a plan you’ll try next time?"
-     ]},
-    {"id": "tips", "direction": "Ask if they have one tip they’d share with other drivers from this event.",
-     "variants": [
-         "Is there one tip you’d share with other drivers from today?",
-         "Got any quick tip you’d pass on to someone running this course tomorrow?",
-         "What’s one practical tip you’d give others after today’s event?"
-     ]},
-    {"id": "closing", "direction": "Offer an open floor for anything else they want to add.",
-     "variants": [
-         "Anything else you want to share before we wrap up the interview?",
-         "Any shoutouts or final thoughts you want to add?",
-         "Before we close, is there anything we didn’t cover that you’d like to mention?"
-     ]}
+    {
+        "id": "event",
+        "direction": "Ask which event or race this interview is about. Keep it conversational and warm.",
+        "variants": [
+            "What event or race is this?",
+            "Which event is this — and how’s the atmosphere out there?",
+            "Let’s start with the event — what event are we talking about?"
+        ]
+    },
+    {
+        "id": "intro",
+        "direction": "Ask for a quick intro (name + car). Keep it warm and concise.",
+        "variants": [
+            "Let’s start with a quick intro — what’s your name and what car did you drive?",
+            "Kick us off with your name and the car you ran.",
+            "Before we dive in, tell me your name and the car you brought to the event."
+        ]
+    },
+    {
+        "id": "summary",
+        "direction": "Get a short overall summary of how the race went.",
+        "variants": [
+            "In a sentence or two, how did the race go overall?",
+            "Give me a quick overview — how would you sum up the race?",
+            "Big picture: how did things go out there?"
+        ]
+    },
+    {
+        "id": "highlight",
+        "direction": "Elicit the favorite/exciting moment; ask for a little detail.",
+        "variants": [
+            "What was the most exciting moment for you? What made it stand out?",
+            "Tell me about your favorite moment — what happened?",
+            "Pick a highlight — what was the best moment out there and why?"
+        ]
+    },
+    {
+        "id": "performance",
+        "direction": "Reflect on results/timing and immediate feelings + a takeaway.",
+        "variants": [
+            "How did you feel about your results or timing, and what’s one takeaway?",
+            "Looking at your times/results, how do you feel — and what did you learn?",
+            "Results-wise, how did it go, and what’s something you’ll carry forward?"
+        ]
+    },
+    {
+        "id": "challenge",
+        "direction": "Surface the hardest moment; ask how they handled it.",
+        "variants": [
+            "What was the toughest part of the race, and how did you handle it?",
+            "Tell me about a hard moment out there — what did you do to get through it?",
+            "What challenged you most out there, and how did you respond?"
+        ]
+    },
+    {
+        "id": "wrap",
+        "direction": "End positive: lesson + next step/goal.",
+        "variants": [
+            "What’s something you learned, and what’s your goal for the next race?",
+            "What will you take into your next event?",
+            "What’s a lesson and a plan you’ll try next time?"
+        ]
+    },
+    {
+        "id": "tips",
+        "direction": "Ask if they have one tip they’d share with other drivers from this event.",
+        "variants": [
+            "Is there one tip you’d share with other drivers from this event?",
+            "Got any quick tip you’d pass on to someone running this course next?",
+            "What’s one practical tip you’d give others after this event?"
+        ]
+    },
+    {
+        "id": "closing",
+        "direction": "Offer an open floor for anything else they want to add.",
+        "variants": [
+            "Anything else you want to share before we wrap up the interview?",
+            "Any shoutouts or final thoughts you want to add?",
+            "Before we close, is there anything we didn’t cover that you’d like to mention?"
+        ]
+    }
 ]
 
 # ---------- System Prompts ----------
@@ -392,6 +419,48 @@ def call_recap(history: List[Dict[str, str]]) -> Dict[str, str]:
     except Exception:
         return {"title": "Race Recap", "recap": "Thanks for the interview!"}
 
+
+# Add this new helper (place above INDEX_HTML)
+def _save_current_markdown(state: Dict[str, Any]) -> str:
+    """Save current interview (Q&A + recap) to markdown. Returns filename."""
+    history = state.get("history", [])
+    driver_name = state.get("driver_name") or _fallback_name_from_history(history)
+    safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", driver_name) or "unknown"
+
+    recap = call_recap(history)
+    title = recap.get("title", "Race Recap")
+    body = recap.get("recap", "")
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    lines = []
+    lines.append(f"# {title}")
+    lines.append("")
+    lines.append(f"- Date: {datetime.now().isoformat(timespec='seconds')}")
+    lines.append(f"- Driver: {driver_name or 'Unknown'}")
+    lines.append("")
+    lines.append("## Recap")
+    lines.append("")
+    lines.append(body)
+    lines.append("")
+    lines.append("## Interview")
+    lines.append("")
+    for i, turn in enumerate(history, 1):
+        q = (turn.get('q') or '').strip()
+        a = (turn.get('a') or '').strip()
+        lines.append(f"{i}. **Q:** {q}")
+        lines.append(f"   \n   **A:** {a}")
+        lines.append("")
+
+    md = "\n".join(lines)
+
+    out_dir = pathlib.Path("interviews")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"interview_{safe_name}_{ts}.md"
+    (out_dir / filename).write_text(md, encoding='utf-8')
+
+    return filename
+
 # ---------- UI ----------
 INDEX_HTML = """<!doctype html>
 <html>
@@ -433,6 +502,13 @@ INDEX_HTML = """<!doctype html>
       .muted { color: var(--muted); font-size: 14px; }
 
       #qa-block { margin-top: 28px; }
+      
+      .modal .actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 14px;
+}
 
       .ack-box, .question-box {
         border: 1px solid var(--border);
@@ -491,6 +567,29 @@ INDEX_HTML = """<!doctype html>
         border-radius: 50%; animation: spin 1s linear infinite;
       }
       @keyframes spin { to { transform: rotate(360deg); } }
+      .modal-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+  display: none; align-items: center; justify-content: center; z-index: 9999;
+}
+.modal-backdrop.visible { display: flex; }
+.modal {
+  width: min(520px, 92vw);
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 22px 22px 18px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+  text-align: center;
+}
+.modal h3 { margin: 0 0 8px; font-size: 22px; }
+.modal p { margin: 6px 0 14px; color: var(--muted); }
+.modal .filename {
+  display: inline-block; padding: 6px 10px; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size: 13px;
+}
     </style>
   </head>
   <body>
@@ -527,16 +626,12 @@ INDEX_HTML = """<!doctype html>
           </div>
         </div>
 
-        <div id="recap-block" class="hidden">
-          <h3 id="recap-title"></h3>
-          <div id="recap" class="recap"></div>
-          <div class="spinner" id="save-spinner" role="status" aria-live="polite">
-            <div class="dot"></div>
-          </div>
-          <div class="row-buttons">
-            <button id="save">Save Interview</button>
-          </div>
-        </div>
+        <!-- Replace the recap block markup to remove the save button/spinner -->
+<div id="recap-block" class="hidden">
+  <h3 id="recap-title"></h3>
+  <div id="recap" class="recap"></div>
+</div>
+
 
         <div class="row-buttons" style="margin-top:28px;">
           <button id="start" class="primary">Start Interview</button>
@@ -546,6 +641,10 @@ INDEX_HTML = """<!doctype html>
     </div>
 
     <script>
+    
+    let currentStage = 0;
+  let totalStages = 0;
+ 
       async function api(path, body) {
         const res = await fetch(path, {
           method: 'POST',
@@ -560,7 +659,6 @@ INDEX_HTML = """<!doctype html>
       const resetBtn = document.getElementById('reset');
       const submitBtn = document.getElementById('submit');
       const finishBtn = document.getElementById('finish');
-      const saveBtn = document.getElementById('save');
       const ackEl = document.getElementById('ack');
       const ackLabel = document.getElementById('ack-label');
       const qEl = document.getElementById('question');
@@ -571,7 +669,15 @@ INDEX_HTML = """<!doctype html>
       const recapEl = document.getElementById('recap');
       const spinner = document.getElementById('spinner');
       const spinnerAck = document.getElementById('spinner-ack');
-      const saveSpinner = document.getElementById('save-spinner');
+      
+      const endModal = document.getElementById('endModal');
+const savedFilenameEl = document.getElementById('savedFilename');
+function openEndModal(filename) {
+  const modal = document.getElementById('endModal');
+  const fileEl = document.getElementById('savedFilename');
+  if (fileEl && filename) fileEl.textContent = filename;
+  if (modal) modal.classList.add('visible');
+}
 
       const SPINNER_ACK_VARIANTS = [
         "Thanks — I got that.",
@@ -608,12 +714,64 @@ INDEX_HTML = """<!doctype html>
         autosize(aEl);
         aEl.focus();
       }
+      
+      function closeEndModal() {
+  const modal = document.getElementById('endModal');
+  if (modal) modal.classList.remove('visible');
+}
+
+// Attach modal listeners AFTER the DOM is ready
+  document.addEventListener('DOMContentLoaded', () => {
+    const endModal = document.getElementById('endModal');
+    const closeBtn = document.getElementById('closeModal');
+
+    // Close with the button
+    if (closeBtn) closeBtn.addEventListener('click', closeEndModal);
+
+    // Close when clicking the backdrop (but not the modal content)
+    if (endModal) {
+      endModal.addEventListener('click', (e) => {
+        if (e.target === endModal) closeEndModal();
+      });
+    }
+  });
+
+  // Close with Escape key (re-query to avoid stale refs)
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const modal = document.getElementById('endModal');
+      if (modal && modal.classList.contains('visible')) {
+        closeEndModal();
+      }
+    }
+  });
+
+// Close with the button
+const closeBtn = document.getElementById('closeModal');
+if (closeBtn) closeBtn.onclick = closeEndModal;
+
+// Close when clicking the backdrop (but not the modal content)
+if (endModal) {
+  endModal.addEventListener('click', (e) => {
+    if (e.target === endModal) closeEndModal();
+  });
+}
+
+// Close with Escape key
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && endModal && endModal.classList.contains('visible')) {
+    closeEndModal();
+  }
+});
+
 
       async function start() {
         const data = await api('/start');
         ackEl.textContent = data.ack || '';
         qEl.textContent = data.question || '';
         ackLabel.textContent = "Thanks for taking the interview.";
+        currentStage = data.stage ?? 0;
+    totalStages = data.total_stages ?? 0;
         resetAnswerBox();
         qaBlock.classList.remove('hidden');
         recapBlock.classList.add('hidden');
@@ -623,17 +781,30 @@ INDEX_HTML = """<!doctype html>
         const answer = aEl.value.trim();
         if (!answer) return;
         const question = qEl.textContent || '';
-        spinnerAck.textContent = pickSpinnerAck();
-        spinner.classList.add('visible');
+        
+        // Show a special message when submitting the *last* question
+const isFinalSubmit = totalStages && currentStage === (totalStages - 1);
+spinnerAck.textContent = isFinalSubmit
+  ? "Thats all the questions we have. Generating the recap. This can take a few seconds..."
+  : pickSpinnerAck();
+
+spinner.classList.add('visible');
+        
         setButtonsDisabled(true);
         try {
           const data = await api('/answer', { answer, question });
           ackLabel.textContent = "";
+          // Update stage counters from server response
+        if (typeof data.stage === 'number') currentStage = data.stage;
+        if (typeof data.total_stages === 'number') totalStages = data.total_stages;
+      
           if (data.done) {
             recapTitle.textContent = data.title || 'Race Recap';
             recapEl.textContent = data.recap || '';
             qaBlock.classList.add('hidden');
             recapBlock.classList.remove('hidden');
+            if (data.saved && data.filename) openEndModal(data.filename);
+
           } else {
             ackEl.textContent = data.ack || '';
             qEl.textContent = data.question || '';
@@ -658,6 +829,7 @@ INDEX_HTML = """<!doctype html>
         recapEl.textContent = data.recap || '';
         qaBlock.classList.add('hidden');
         recapBlock.classList.remove('hidden');
+        if (data.saved && data.filename) openEndModal(data.filename);
       }
 
       async function reset() {
@@ -665,28 +837,23 @@ INDEX_HTML = """<!doctype html>
         location.reload();
       }
 
-      async function saveNow() {
-        saveSpinner.classList.add('visible');
-        setButtonsDisabled(true);
-        try {
-          const data = await api('/save', {});
-          if (data && data.saved) {
-            alert('Saved: ' + data.filename);
-          } else {
-            alert('Save failed.');
-          }
-        } finally {
-          saveSpinner.classList.remove('visible');
-          setButtonsDisabled(false);
-        }
-      }
-
       startBtn.onclick = start;
       submitBtn.onclick = send;
       finishBtn.onclick = finishNow;
       resetBtn.onclick = reset;
-      if (saveBtn) saveBtn.onclick = saveNow;
     </script>
+
+<div id="endModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="endTitle">
+  <div class="modal">
+    <h3 id="endTitle">That’s the end of the interview.</h3>
+    <p>Thanks so much for taking the interview.</p>
+    <p class="muted" style="margin-top:10px;">You can close this tab or start another interview.</p>
+    <div class="actions">
+      <button id="closeModal" class="primary">Close</button>
+    </div>
+  </div>
+</div>
+
   </body>
 </html>
 """
@@ -716,8 +883,10 @@ def start():
     state["followup_pending"] = False
     state["driver_name"] = ""
     q = pick_variant(0)
-    return jsonify({"ack": "", "question": q, "stage": state["stage"]})
+    return jsonify({"ack": "", "question": q, "stage": state["stage"], "total_stages": len(STORYLINE)})
 
+
+# Replace the entire /answer handler with this version (auto-saves on natural end)
 @app.route("/answer", methods=["POST"])
 def answer():
     payload = request.get_json(force=True)
@@ -729,7 +898,6 @@ def answer():
     followup_pending = state.get("followup_pending", False)
 
     allow_followup = stage < (len(STORYLINE) - 3)
-
 
     # Record the Q&A we just asked/answered
     last_q = shown_question or (pick_variant(stage) if stage >= 0 else "")
@@ -750,15 +918,17 @@ def answer():
         state["stage"] = next_stage
 
         if next_stage >= len(STORYLINE):
+            filename = _save_current_markdown(state)
             recap = call_recap(state["history"])
-            return jsonify({"done": True, **recap})
+            return jsonify({"done": True, "saved": True, "filename": filename, **recap, "total_stages": len(STORYLINE)})
 
         result = call_interviewer(state["history"], next_stage)
         return jsonify({
             "done": False,
             "ack": result.get("ack", ""),
             "question": result.get("next_question", pick_variant(next_stage)),
-            "stage": next_stage
+            "stage": next_stage,
+            "total_stages": len(STORYLINE),
         })
 
     # Case 2: decide semantically whether to follow up
@@ -780,8 +950,9 @@ def answer():
     state["followup_pending"] = False
 
     if next_stage >= len(STORYLINE):
+        filename = _save_current_markdown(state)
         recap = call_recap(state["history"])
-        return jsonify({"done": True, **recap})
+        return jsonify({"done": True, "saved": True, "filename": filename, **recap})
 
     result = call_interviewer(state["history"], next_stage)
     return jsonify({
@@ -791,26 +962,26 @@ def answer():
         "stage": next_stage
     })
 
+
+# Replace the entire /finish handler with this version (auto-saves on manual finish)
 @app.route("/finish", methods=["POST"])
 def finish_now():
     state = ensure_state()
+    filename = _save_current_markdown(state)
     recap = call_recap(state.get("history", []))
     state["followup_pending"] = False
-    return jsonify({"done": True, **recap})
+    return jsonify({"done": True, "saved": True, "filename": filename, **recap})
 
 
 def _fallback_name_from_history(history: List[Dict[str, str]]) -> str:
-    # Try to find the intro answer and extract from it
     for turn in history:
-        if re.search(r"\bname\b", (turn.get("q") or ""), re.IGNORECASE):
+        q = (turn.get("q") or "")
+        # Look for the intro question that asks for name (and car)
+        if re.search(r"\b(name|your name|intro)\b", q, re.IGNORECASE):
             guess = extract_driver_name(turn.get("a", ""))
             if guess:
                 return guess
-    # Otherwise attempt on first 2 answers
-    for turn in history[:2]:
-        guess = extract_driver_name(turn.get("a", ""))
-        if guess:
-            return guess
+    # If we never asked for a name, don't guess from unrelated answers
     return ""
 
 @app.route("/reset", methods=["POST"])
