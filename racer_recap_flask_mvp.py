@@ -11,6 +11,8 @@ from dotenv import load_dotenv
 load_dotenv()
 SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+SPEECH_MODEL = os.getenv("SPEECH_MODEL", "gpt-4o-mini-transcribe")
+
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -521,137 +523,81 @@ INDEX_HTML = """<!doctype html>
       .row { display: flex; gap: 16px; align-items: center; justify-content: space-between; }
       h2 { margin: 0 0 4px 0; font-size: 28px; line-height: 1.2; }
       .muted { color: var(--muted); font-size: 14px; }
+      .header-line {
+        display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+        margin: 0 0 2px 0;
+      }
+      .header-line .title { font-size: 28px; line-height: 1.2; margin: 0; }
+      .brand { color: var(--muted); font-size: 16px; font-weight: 500; opacity: .9; }
+      .tagline { margin: 6px 0 0 0; color: var(--muted); font-size: 14px; letter-spacing: .2px; }
 
       #qa-block { margin-top: 28px; }
-      
-      .modal .actions {
-  display: flex;
-  justify-content: center;
-  gap: 10px;
-  margin-top: 14px;
-}
-
       .ack-box, .question-box {
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        padding: 16px 18px;
-        background: var(--panel-2);
-        margin: 10px 0 16px 0;
-        position: relative;
-        transition: background-color 0.3s ease;
+        border: 1px solid var(--border); border-radius: 12px;
+        padding: 16px 18px; background: var(--panel-2);
+        margin: 10px 0 16px 0; transition: background-color 0.3s ease;
       }
       .ack-box { background: #1d2126; color: var(--text); }
-
       .ack-label, .question-label {
         font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;
         color: var(--muted); margin-bottom: 6px;
       }
       .ack { margin: 0; font-size: 16px; line-height: 1.55; }
       .q { margin: 0; font-weight: 600; font-size: 19px; line-height: 1.45; }
-      
-      .header-line{
-  display:flex;
-  align-items:baseline;
-  gap:12px;
-  flex-wrap:wrap;           /* stays on one line when space allows */
-  margin:0 0 2px 0;
-}
-.header-line .title{
-  margin:0;
-  font-size:28px;
-  line-height:1.2;
-}
-.brand{
-  color:var(--muted);
-  font-size:16px;
-  font-weight:500;
-  opacity:.9;
-}
-.tagline{
-  margin:6px 0 0 0;
-  color:var(--muted);
-  font-size:14px;
-  letter-spacing:.2px;
-}
-
 
       textarea {
         width: 100%; min-height: 220px; max-height: 480px; margin-top: 12px; padding: 16px 18px;
-        background: var(--panel-2); color: var(--text); caret-color: var(--accent);
-        border: 1px solid var(--border); border-radius: 14px; font-size: 17px; line-height: 1.65;
-        resize: vertical; outline: none; overflow: auto;
+        background: var(--panel-2); color: var(--text);
+        border: 1px solid var(--border); border-radius: 14px;
+        font-size: 17px; line-height: 1.65; resize: vertical;
+        outline: none; overflow: auto; caret-color: var(--accent);
       }
-      textarea::placeholder { color: color-mix(in oklab, var(--muted) 80%, #fff 20%); }
-      textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.18); }
+      textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(10,132,255,0.18); }
 
       @keyframes uiFlash {
-        0% { background-color: inherit; box-shadow: inset 0 0 0 0 rgba(0,160,255,0); }
-        25% { background-color: #2b4256; box-shadow: inset 0 0 8px 2px rgba(0,160,255,0.16), inset 0 0 16px 4px rgba(0,180,255,0.08); }
-        60% { background-color: #253a4d; box-shadow: inset 0 0 10px 3px rgba(0,160,255,0.10), inset 0 0 18px 6px rgba(0,180,255,0.06); }
-        100% { background-color: inherit; box-shadow: inset 0 0 0 0 rgba(0,160,255,0); }
+        0% { background-color: inherit; box-shadow: none; }
+        25% { background-color: #2b4256; box-shadow: inset 0 0 6px 2px rgba(0,160,255,0.16); }
+        60% { background-color: #253a4d; box-shadow: inset 0 0 8px 4px rgba(0,160,255,0.1); }
+        100% { background-color: inherit; box-shadow: none; }
       }
-      .ack-box.flash { animation: uiFlash 0.9s ease-out; }
-      .question-box.flash { animation: uiFlash 0.9s ease-out; }
+      .ack-box.flash, .question-box.flash { animation: uiFlash 0.9s ease-out; }
 
-      button { padding: 10px 16px; border-radius: 10px; border: 1px solid var(--border); background: #333; color: var(--text); cursor: pointer; font-size: 15px; transition: opacity 0.2s ease, transform 0.1s ease; }
+      button {
+        padding: 10px 16px; border-radius: 10px;
+        border: 1px solid var(--border); background: #333;
+        color: var(--text); cursor: pointer;
+        font-size: 15px; transition: opacity 0.2s ease, transform 0.1s ease;
+      }
       button.primary { background: var(--accent); border: none; color: #fff; }
       button:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
       button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
       .row-buttons { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
-
       .recap { white-space: pre-wrap; margin-top: 24px; }
       .hidden { display: none; }
 
-      /* Spinner with tiny ack text */
       .spinner {
-        display: flex; align-items: center; gap: 10px; margin-top: 20px; height: 40px;
-        visibility: hidden; color: var(--muted); font-size: 14px;
+        display: flex; align-items: center; gap: 10px;
+        margin-top: 20px; height: 40px; visibility: hidden;
+        color: var(--muted); font-size: 14px;
       }
       .spinner.visible { visibility: visible; }
       .spinner .dot {
-        width: 32px; height: 32px; border: 3px solid var(--accent); border-top-color: transparent;
-        border-radius: 50%; animation: spin 1s linear infinite;
+        width: 32px; height: 32px; border: 3px solid var(--accent);
+        border-top-color: transparent; border-radius: 50%;
+        animation: spin 1s linear infinite;
       }
       @keyframes spin { to { transform: rotate(360deg); } }
-      .modal-backdrop {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.55);
-  display: none; align-items: center; justify-content: center; z-index: 9999;
-}
-.modal-backdrop.visible { display: flex; }
-.modal {
-  width: min(520px, 92vw);
-  background: var(--panel);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 22px 22px 18px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.45);
-  text-align: center;
-}
-.modal h3 { margin: 0 0 8px; font-size: 22px; }
-.modal p { margin: 6px 0 14px; color: var(--muted); }
-.modal .filename {
-  display: inline-block; padding: 6px 10px; border-radius: 8px;
-  background: var(--panel-2); border: 1px solid var(--border);
-  font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  font-size: 13px;
-}
     </style>
   </head>
   <body>
     <div class="wrap">
       <div class="card">
-        <div class="row">
-          <div>
-            <div class="header-line">
-  <h2 class="title">Racer Recap Interview</h2>
-  <span class="brand">An Apexiel, Inc. Prototype.</span>
-</div>
-<p class="tagline">Every lap has a story—tell yours</p>
-
-          </div>
+        <div class="header-line">
+          <h2 class="title">Racer Recap Interview</h2>
+          <span class="brand">An Apexiel, Inc. Prototype.</span>
         </div>
+        <p class="tagline">Every lap has a story—tell yours</p>
 
         <div id="qa-block" class="hidden">
           <div class="ack-box">
@@ -666,23 +612,22 @@ INDEX_HTML = """<!doctype html>
 
           <textarea id="answer" placeholder="Type your answer..."></textarea>
 
-          <div class="spinner" id="spinner" role="status" aria-live="polite">
+          <div class="spinner" id="spinner">
             <div class="dot"></div>
-            <span class="msg" id="spinner-ack"></span>
+            <span id="spinner-ack"></span>
           </div>
 
           <div class="row-buttons">
             <button id="submit" class="primary">Submit Answer</button>
+            <button id="mic" aria-pressed="false">🎤 <span class="mic-label">Talk Answer</span></button>
             <button id="finish">Finish Now</button>
           </div>
         </div>
 
-        <!-- Replace the recap block markup to remove the save button/spinner -->
-<div id="recap-block" class="hidden">
-  <h3 id="recap-title"></h3>
-  <div id="recap" class="recap"></div>
-</div>
-
+        <div id="recap-block" class="hidden">
+          <h3 id="recap-title"></h3>
+          <div id="recap" class="recap"></div>
+        </div>
 
         <div class="row-buttons" style="margin-top:28px;">
           <button id="start" class="primary">Start Interview</button>
@@ -692,222 +637,37 @@ INDEX_HTML = """<!doctype html>
     </div>
 
     <script>
-    
-    let currentStage = 0;
-  let totalStages = 0;
- 
-      async function api(path, body) {
-        const res = await fetch(path, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body || {})
-        });
-        return await res.json();
-      }
+      let currentStage=0,totalStages=0;
+      async function api(path,body){const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});return await res.json();}
+      const buttons=[...document.querySelectorAll('button')];
+      const startBtn=document.getElementById('start'),resetBtn=document.getElementById('reset'),submitBtn=document.getElementById('submit'),finishBtn=document.getElementById('finish'),ackEl=document.getElementById('ack'),ackLabel=document.getElementById('ack-label'),qEl=document.getElementById('question'),aEl=document.getElementById('answer'),qaBlock=document.getElementById('qa-block'),recapBlock=document.getElementById('recap-block'),recapTitle=document.getElementById('recap-title'),recapEl=document.getElementById('recap'),spinner=document.getElementById('spinner'),spinnerAck=document.getElementById('spinner-ack');
+      function setButtonsDisabled(x){buttons.forEach(b=>b.disabled=x);}
+      function flashBox(e){if(!e)return;e.classList.remove('flash');void e.offsetWidth;e.classList.add('flash');}
+      function autosize(e){if(!e)return;e.style.height='auto';const m=parseInt(getComputedStyle(e).maxHeight,10)||480;e.style.height=Math.min(e.scrollHeight,m)+'px';}
+      function resetAnswerBox(){aEl.value='';autosize(aEl);aEl.focus();}
+      async function start(){const d=await api('/start');ackEl.textContent=d.ack||'';qEl.textContent=d.question||'';ackLabel.textContent="Thanks for taking the interview.";currentStage=d.stage??0;totalStages=d.total_stages??0;resetAnswerBox();qaBlock.classList.remove('hidden');recapBlock.classList.add('hidden');}
+      async function send(){const answer=aEl.value.trim();if(!answer)return;const question=qEl.textContent||'';const isFinal=totalStages&&currentStage===(totalStages-1);spinnerAck.textContent=isFinal?"Thats all the questions we have. Generating the recap. This can take a few seconds...":"Processing...";spinner.classList.add('visible');setButtonsDisabled(true);try{const d=await api('/answer',{answer,question});ackLabel.textContent="";if(typeof d.stage==='number')currentStage=d.stage;if(typeof d.total_stages==='number')totalStages=d.total_stages;if(d.done){recapTitle.textContent=d.title||'Race Recap';recapEl.textContent=d.recap||'';qaBlock.classList.add('hidden');recapBlock.classList.remove('hidden');}else{ackEl.textContent=d.ack||'';qEl.textContent=d.question||'';flashBox(document.querySelector('.ack-box'));setTimeout(()=>flashBox(document.querySelector('.question-box')),200);resetAnswerBox();}}finally{spinner.classList.remove('visible');spinnerAck.textContent="";setButtonsDisabled(false);}}
+      async function finishNow(){spinner.classList.add('visible');setButtonsDisabled(true);const d=await api('/finish');spinner.classList.remove('visible');setButtonsDisabled(false);recapTitle.textContent=d.title||'Race Recap';recapEl.textContent=d.recap||'';qaBlock.classList.add('hidden');recapBlock.classList.remove('hidden');}
+      async function reset(){await api('/reset');location.reload();}
+      startBtn.onclick=start;submitBtn.onclick=send;finishBtn.onclick=finishNow;resetBtn.onclick=reset;
 
-      const buttons = Array.from(document.querySelectorAll('button'));
-      const startBtn = document.getElementById('start');
-      const resetBtn = document.getElementById('reset');
-      const submitBtn = document.getElementById('submit');
-      const finishBtn = document.getElementById('finish');
-      const ackEl = document.getElementById('ack');
-      const ackLabel = document.getElementById('ack-label');
-      const qEl = document.getElementById('question');
-      const aEl = document.getElementById('answer');
-      const qaBlock = document.getElementById('qa-block');
-      const recapBlock = document.getElementById('recap-block');
-      const recapTitle = document.getElementById('recap-title');
-      const recapEl = document.getElementById('recap');
-      const spinner = document.getElementById('spinner');
-      const spinnerAck = document.getElementById('spinner-ack');
-      
-      const endModal = document.getElementById('endModal');
-const savedFilenameEl = document.getElementById('savedFilename');
-function openEndModal(filename) {
-  const modal = document.getElementById('endModal');
-  const fileEl = document.getElementById('savedFilename');
-  if (fileEl && filename) fileEl.textContent = filename;
-  if (modal) modal.classList.add('visible');
-}
-
-      const SPINNER_ACK_VARIANTS = [
-        "Thanks — I got that.",
-        "Thanks, got it.",
-        "Appreciate it — received.",
-        "Thanks — processing that now.",
-        "Got it, thank you."
-      ];
-      function pickSpinnerAck() {
-        const i = Math.floor(Math.random() * SPINNER_ACK_VARIANTS.length);
-        return SPINNER_ACK_VARIANTS[i];
-      }
-
-      function setButtonsDisabled(disabled) {
-        buttons.forEach(btn => btn.disabled = disabled);
-      }
-
-      function flashBox(el) {
-        if (!el) return;
-        el.classList.remove('flash');
-        void el.offsetWidth;
-        el.classList.add('flash');
-      }
-
-      function autosize(el) {
-        if (!el) return;
-        el.style.height = 'auto';
-        const max = parseInt(getComputedStyle(el).maxHeight, 10) || 480;
-        el.style.height = Math.min(el.scrollHeight, max) + 'px';
-      }
-
-      function resetAnswerBox() {
-        aEl.value = '';
-        autosize(aEl);
-        aEl.focus();
-      }
-      
-      function closeEndModal() {
-  const modal = document.getElementById('endModal');
-  if (modal) modal.classList.remove('visible');
-}
-
-// Attach modal listeners AFTER the DOM is ready
-  document.addEventListener('DOMContentLoaded', () => {
-    const endModal = document.getElementById('endModal');
-    const closeBtn = document.getElementById('closeModal');
-
-    // Close with the button
-    if (closeBtn) closeBtn.addEventListener('click', closeEndModal);
-
-    // Close when clicking the backdrop (but not the modal content)
-    if (endModal) {
-      endModal.addEventListener('click', (e) => {
-        if (e.target === endModal) closeEndModal();
-      });
-    }
-  });
-
-  // Close with Escape key (re-query to avoid stale refs)
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      const modal = document.getElementById('endModal');
-      if (modal && modal.classList.contains('visible')) {
-        closeEndModal();
-      }
-    }
-  });
-
-// Close with the button
-const closeBtn = document.getElementById('closeModal');
-if (closeBtn) closeBtn.onclick = closeEndModal;
-
-// Close when clicking the backdrop (but not the modal content)
-if (endModal) {
-  endModal.addEventListener('click', (e) => {
-    if (e.target === endModal) closeEndModal();
-  });
-}
-
-// Close with Escape key
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && endModal && endModal.classList.contains('visible')) {
-    closeEndModal();
-  }
-});
-
-
-      async function start() {
-        const data = await api('/start');
-        ackEl.textContent = data.ack || '';
-        qEl.textContent = data.question || '';
-        ackLabel.textContent = "Thanks for taking the interview.";
-        currentStage = data.stage ?? 0;
-    totalStages = data.total_stages ?? 0;
-        resetAnswerBox();
-        qaBlock.classList.remove('hidden');
-        recapBlock.classList.add('hidden');
-      }
-
-      async function send() {
-        const answer = aEl.value.trim();
-        if (!answer) return;
-        const question = qEl.textContent || '';
-        
-        // Show a special message when submitting the *last* question
-const isFinalSubmit = totalStages && currentStage === (totalStages - 1);
-spinnerAck.textContent = isFinalSubmit
-  ? "Thats all the questions we have. Generating the recap. This can take a few seconds..."
-  : pickSpinnerAck();
-
-spinner.classList.add('visible');
-        
-        setButtonsDisabled(true);
-        try {
-          const data = await api('/answer', { answer, question });
-          ackLabel.textContent = "";
-          // Update stage counters from server response
-        if (typeof data.stage === 'number') currentStage = data.stage;
-        if (typeof data.total_stages === 'number') totalStages = data.total_stages;
-      
-          if (data.done) {
-            recapTitle.textContent = data.title || 'Race Recap';
-            recapEl.textContent = data.recap || '';
-            qaBlock.classList.add('hidden');
-            recapBlock.classList.remove('hidden');
-            if (data.saved && data.filename) openEndModal(data.filename);
-
-          } else {
-            ackEl.textContent = data.ack || '';
-            qEl.textContent = data.question || '';
-            flashBox(document.querySelector('.ack-box'));
-            setTimeout(() => flashBox(document.querySelector('.question-box')), 200);
-            resetAnswerBox();
-          }
-        } finally {
-          spinner.classList.remove('visible');
-          spinnerAck.textContent = "";
-          setButtonsDisabled(false);
-        }
-      }
-
-      async function finishNow() {
-        spinner.classList.add('visible');
-        setButtonsDisabled(true);
-        const data = await api('/finish');
-        spinner.classList.remove('visible');
-        setButtonsDisabled(false);
-        recapTitle.textContent = data.title || 'Race Recap';
-        recapEl.textContent = data.recap || '';
-        qaBlock.classList.add('hidden');
-        recapBlock.classList.remove('hidden');
-        if (data.saved && data.filename) openEndModal(data.filename);
-      }
-
-      async function reset() {
-        await api('/reset');
-        location.reload();
-      }
-
-      startBtn.onclick = start;
-      submitBtn.onclick = send;
-      finishBtn.onclick = finishNow;
-      resetBtn.onclick = reset;
+      // --- OpenAI voice-to-text recording ---
+      const micBtn=document.getElementById('mic');let mediaRecorder=null,micStream=null,audioChunks=[],isRecording=false;
+      function supportsAnyMime(m){if(!window.MediaRecorder)return false;return m.find(x=>MediaRecorder.isTypeSupported(x))||"";}
+      async function startMic(){try{micStream=await navigator.mediaDevices.getUserMedia({audio:true});}catch(e){console.error("Mic denied",e);micBtn.disabled=true;return;}
+        const mime=supportsAnyMime(['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus']);
+        try{mediaRecorder=mime?new MediaRecorder(micStream,{mimeType:mime}):new MediaRecorder(micStream);audioChunks=[];
+          mediaRecorder.ondataavailable=e=>{if(e.data.size>0)audioChunks.push(e.data);};
+          mediaRecorder.onstop=async()=>{try{const blob=new Blob(audioChunks,{type:mime||'audio/webm'});const f=new FormData();f.append('audio',blob,'speech.webm');const r=await fetch('/transcribe',{method:'POST',body:f});const j=await r.json();if(j?.text){aEl.value=(aEl.value?aEl.value+' ':'')+j.text;autosize(aEl);}}catch(e){console.error("Transcription failed",e);}finally{if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}isRecording=false;micBtn.setAttribute('aria-pressed','false');micBtn.innerHTML='🎤 <span class="mic-label">Talk Answer</span>';}};mediaRecorder.start();isRecording=true;micBtn.setAttribute('aria-pressed','true');micBtn.innerHTML='🔴 <span class="mic-label">Recording…</span>';}catch(e){console.error("MediaRecorder failed",e);if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}micBtn.disabled=true;micBtn.innerHTML='🎤 <span class="mic-label">Unsupported</span>';}}
+      function stopMic(){try{if(mediaRecorder&&isRecording)mediaRecorder.stop();else if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}}catch(e){console.warn(e);}finally{isRecording=false;micBtn.setAttribute('aria-pressed','false');micBtn.innerHTML='🎤 <span class="mic-label">Talk Answer</span>';}}
+      micBtn.addEventListener('click',()=>{isRecording?stopMic():startMic();});
+      window.addEventListener('beforeunload',()=>{if(isRecording)stopMic();});
+      submitBtn.addEventListener('click',()=>{if(isRecording)stopMic();});
+      finishBtn.addEventListener('click',()=>{if(isRecording)stopMic();});
     </script>
-
-<div id="endModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="endTitle">
-  <div class="modal">
-    <h3 id="endTitle">That’s the end of the interview.</h3>
-    <p>Thanks so much for taking the interview.</p>
-    <p class="muted" style="margin-top:10px;">You can close this tab or start another interview.</p>
-    <div class="actions">
-      <button id="closeModal" class="primary">Close</button>
-    </div>
-  </div>
-</div>
-
   </body>
-</html>
-"""
+</html>"""
+
 
 # ---------- Routes ----------
 @app.route("/", methods=["GET"])
@@ -925,6 +685,39 @@ def ensure_state() -> Dict[str, Any]:
     if sid not in SESSIONS:
         SESSIONS[sid] = {"stage": 0, "history": [], "followup_pending": False, "driver_name": ""}
     return SESSIONS[sid]
+
+
+@app.route("/transcribe", methods=["POST"])
+def transcribe_audio():
+    """Accept a short audio clip and transcribe it with OpenAI."""
+    if not _model_available():
+        return jsonify({"error": "OpenAI client not available"}), 503
+
+    audio_file = request.files.get("audio")
+    if not audio_file:
+        return jsonify({"error": "No audio file uploaded (field name 'audio')"}), 400
+
+    # Persist temporarily so the SDK can read a real file handle
+    import tempfile, os as _os
+    suffix = ".webm"
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            audio_path = tmp.name
+            audio_file.save(audio_path)
+
+        with open(audio_path, "rb") as f:
+            # Works with "gpt-4o-mini-transcribe" or "whisper-1"
+            tr = client.audio.transcriptions.create(
+                model=SPEECH_MODEL,
+                file=f,
+            )
+        text = getattr(tr, "text", "") or (tr.get("text", "") if isinstance(tr, dict) else "")
+        return jsonify({"text": text})
+    finally:
+        try:
+            _os.remove(audio_path)
+        except Exception:
+            pass
 
 @app.route("/start", methods=["POST"])
 def start():
