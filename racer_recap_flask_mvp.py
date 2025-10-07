@@ -158,20 +158,27 @@ FOLLOWUP_SYSTEM = (
 )
 
 RECAP_SYSTEM = (
-    "You are a motorsport writer turning a short Q&A into a vivid, first-person racer recap.\n"
-    "Voice: natural, human, reflective but upbeat; vary sentence length; avoid hype and clichés.\n"
-    "Constraints:\n"
+    "You are a motorsport writer turning a short Q&A into an EDITABLE, EXAMPLE-QUALITY racer recap.\n"
+    "Goal: model the kind of recap the driver should write themselves: authentic voice + concrete, technical info.\n"
+    "Tone: natural, human, reflective; vary sentence length; avoid hype/clichés.\n"
+    "Hard rules:\n"
     "- 220–300 words total.\n"
     "- First-person (use 'I'). Past tense.\n"
-    "- Keep it truthful to the Q&A. If a detail (time, cones, position, section names, setup changes) appears in the Q&A, include it verbatim.\n"
-    "- Do NOT invent numbers or facts.\n"
-    "Required shape:\n"
-    "  1) Setting: event, surface/weather, and car/setup quickly.\n"
-    "  2) One highlight with a concrete course feature + sensory detail.\n"
-    "  3) One challenge: what went wrong, why hard, what I changed, result.\n"
-    "  4) Performance snapshot: at least one metric if present + how it felt.\n"
-    "  5) Takeaway + next step: one clear lesson and plan.\n"
-    "Close with a single reflective line.\n"
+    "- Do NOT invent numbers, names, or facts not in the Q&A.\n"
+    "- Avoid explicit time references like 'today', 'tonight', 'yesterday'. Use event names or neutral phrasing.\n"
+    "\n"
+    "Required structure for the body (return it as plain text in one field called 'recap'):\n"
+    "  1) Opening (2–3 sentences): setting with event, surface/weather, car/setup.\n"
+    "  2) Highlight (3–5 sentences): one course feature + sensory detail + why it worked (line, braking, weight transfer, etc.).\n"
+    "  3) Challenge & fix (3–5 sentences): what went wrong, why it was hard, what I changed, the result.\n"
+    "  4) For me (2–3 sentences): concrete takeaway(s) and next step I’ll try; include a metric ONLY if present in Q&A.\n"
+    "  5) For other drivers (3–5 bullets): short, actionable pointers derived from the Q&A—setup tweaks, markers, traps.\n"
+    "     Start each bullet with '• ' and keep each to a single line.\n"
+    "  6) Closing (one short reflective line).\n"
+    "\n"
+    "Formatting:\n"
+    "- Use simple section lead-ins like 'Highlight:' and 'For other drivers:' inside the same recap text. No extra keys.\n"
+    "- Keep language specific and grounded in actual details from the Q&A.\n"
     "Return ONLY JSON with keys: title, recap. Title ≤ 60 chars."
 )
 
@@ -393,7 +400,8 @@ def build_recap_messages(history: List[Dict[str, str]]) -> List[Dict[str, str]]:
     structured = {f"step_{i + 1}": t for i, t in enumerate(history)}
     guidance = (
         "Use ONLY details present in this interview. If a number or proper noun isn't here, leave it out.\n"
-        "Prefer concrete nouns and short clauses over vague praise. Keep it grounded and local-club plausible."
+        "Write an example-quality recap the driver could lightly edit and post. Balance emotion with concrete technique.\n"
+        "Prefer specific nouns, course features, inputs, setup terms, and brief cause→effect explanations."
     )
     return [
         {"role": "system", "content": RECAP_SYSTEM},
