@@ -530,6 +530,23 @@ INDEX_HTML = """<!doctype html>
       .header-line .title { font-size: 28px; line-height: 1.2; margin: 0; }
       .brand { color: var(--muted); font-size: 16px; font-weight: 500; opacity: .9; }
       .tagline { margin: 6px 0 0 0; color: var(--muted); font-size: 14px; letter-spacing: .2px; }
+      
+      @keyframes pulse {
+        0% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.3); opacity: 0.6; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+
+      .mic-pulse {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background-color: #ff4d4d;
+        margin-right: 8px;
+        animation: pulse 1s infinite ease-in-out;
+        vertical-align: middle;
+      }
 
       #qa-block { margin-top: 28px; }
       .ack-box, .question-box {
@@ -619,7 +636,7 @@ INDEX_HTML = """<!doctype html>
 
           <div class="row-buttons">
             <button id="submit" class="primary">Submit Answer</button>
-            <button id="mic" aria-pressed="false">🎤 <span class="mic-label">Talk Answer</span></button>
+            <button id="mic" aria-pressed="false">🎤</button>
             <button id="finish">Finish Now</button>
           </div>
         </div>
@@ -645,7 +662,7 @@ INDEX_HTML = """<!doctype html>
       function flashBox(e){if(!e)return;e.classList.remove('flash');void e.offsetWidth;e.classList.add('flash');}
       function autosize(e){if(!e)return;e.style.height='auto';const m=parseInt(getComputedStyle(e).maxHeight,10)||480;e.style.height=Math.min(e.scrollHeight,m)+'px';}
       function resetAnswerBox(){aEl.value='';autosize(aEl);aEl.focus();}
-      async function start(){const d=await api('/start');ackEl.textContent=d.ack||'';qEl.textContent=d.question||'';ackLabel.textContent="Thanks for taking the interview.";currentStage=d.stage??0;totalStages=d.total_stages??0;resetAnswerBox();qaBlock.classList.remove('hidden');recapBlock.classList.add('hidden');}
+      async function start(){const d=await api('/start');ackEl.textContent=d.ack||'';qEl.textContent=d.question||'';ackLabel.textContent="Thanks for taking the interview.";currentStage=d.stage??0;totalStages=d.total_stages??0;resetAnswerBox();qaBlock.classList.remove('hidden');recapBlock.classList.add('hidden');startBtn.classList.add('hidden');}
       async function send(){const answer=aEl.value.trim();if(!answer)return;const question=qEl.textContent||'';const isFinal=totalStages&&currentStage===(totalStages-1);spinnerAck.textContent=isFinal?"Thats all the questions we have. Generating the recap. This can take a few seconds...":"Processing...";spinner.classList.add('visible');setButtonsDisabled(true);try{const d=await api('/answer',{answer,question});ackLabel.textContent="";if(typeof d.stage==='number')currentStage=d.stage;if(typeof d.total_stages==='number')totalStages=d.total_stages;if(d.done){recapTitle.textContent=d.title||'Race Recap';recapEl.textContent=d.recap||'';qaBlock.classList.add('hidden');recapBlock.classList.remove('hidden');}else{ackEl.textContent=d.ack||'';qEl.textContent=d.question||'';flashBox(document.querySelector('.ack-box'));setTimeout(()=>flashBox(document.querySelector('.question-box')),200);resetAnswerBox();}}finally{spinner.classList.remove('visible');spinnerAck.textContent="";setButtonsDisabled(false);}}
       async function finishNow(){spinner.classList.add('visible');setButtonsDisabled(true);const d=await api('/finish');spinner.classList.remove('visible');setButtonsDisabled(false);recapTitle.textContent=d.title||'Race Recap';recapEl.textContent=d.recap||'';qaBlock.classList.add('hidden');recapBlock.classList.remove('hidden');}
       async function reset(){await api('/reset');location.reload();}
@@ -658,8 +675,9 @@ INDEX_HTML = """<!doctype html>
         const mime=supportsAnyMime(['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus']);
         try{mediaRecorder=mime?new MediaRecorder(micStream,{mimeType:mime}):new MediaRecorder(micStream);audioChunks=[];
           mediaRecorder.ondataavailable=e=>{if(e.data.size>0)audioChunks.push(e.data);};
-          mediaRecorder.onstop=async()=>{try{const blob=new Blob(audioChunks,{type:mime||'audio/webm'});const f=new FormData();f.append('audio',blob,'speech.webm');const r=await fetch('/transcribe',{method:'POST',body:f});const j=await r.json();if(j?.text){aEl.value=(aEl.value?aEl.value+' ':'')+j.text;autosize(aEl);}}catch(e){console.error("Transcription failed",e);}finally{if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}isRecording=false;micBtn.setAttribute('aria-pressed','false');micBtn.innerHTML='🎤 <span class="mic-label">Talk Answer</span>';}};mediaRecorder.start();isRecording=true;micBtn.setAttribute('aria-pressed','true');micBtn.innerHTML='🔴 <span class="mic-label">Recording…</span>';}catch(e){console.error("MediaRecorder failed",e);if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}micBtn.disabled=true;micBtn.innerHTML='🎤 <span class="mic-label">Unsupported</span>';}}
-      function stopMic(){try{if(mediaRecorder&&isRecording)mediaRecorder.stop();else if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}}catch(e){console.warn(e);}finally{isRecording=false;micBtn.setAttribute('aria-pressed','false');micBtn.innerHTML='🎤 <span class="mic-label">Talk Answer</span>';}}
+          mediaRecorder.onstop=async()=>{try{const blob=new Blob(audioChunks,{type:mime||'audio/webm'});const f=new FormData();f.append('audio',blob,'speech.webm');const r=await fetch('/transcribe',{method:'POST',body:f});const j=await r.json();if(j?.text){aEl.value=(aEl.value?aEl.value+' ':'')+j.text;autosize(aEl);}}catch(e){console.error("Transcription failed",e);}finally{if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}isRecording=false;micBtn.setAttribute('aria-pressed','false');micBtn.innerHTML='🎤';}};mediaRecorder.start();isRecording=true;micBtn.setAttribute('aria-pressed','true');micBtn.innerHTML='<span class="mic-pulse"></span><span class="mic-label">Listening…</span>';
+}catch(e){console.error("MediaRecorder failed",e);if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}micBtn.disabled=true;micBtn.innerHTML='🎤 <span class="mic-label">Unsupported</span>';}}
+      function stopMic(){try{if(mediaRecorder&&isRecording)mediaRecorder.stop();else if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}}catch(e){console.warn(e);}finally{isRecording=false;micBtn.setAttribute('aria-pressed','false');micBtn.innerHTML='🎤';}}
       micBtn.addEventListener('click',()=>{isRecording?stopMic():startMic();});
       window.addEventListener('beforeunload',()=>{if(isRecording)stopMic();});
       submitBtn.addEventListener('click',()=>{if(isRecording)stopMic();});
